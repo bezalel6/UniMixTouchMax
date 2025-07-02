@@ -19,11 +19,11 @@ namespace TaskManager {
 #define AUDIO_TASK_STACK_SIZE (6 * 1024)  // Core 0: Audio management (increased from 4KB)
 
 // LVGL performance monitoring thresholds
-#define LVGL_DURATION_CRITICAL_STARTUP 300  // Critical threshold during startup (ms)
-#define LVGL_DURATION_WARNING_STARTUP 200   // Warning threshold during startup (ms)
-#define LVGL_DURATION_INFO_STARTUP 100      // Info threshold during startup (ms)
-#define LVGL_DURATION_CRITICAL_NORMAL 100   // Critical threshold during normal operation (ms)
-#define LVGL_DURATION_WARNING_NORMAL 50     // Warning threshold during normal operation (ms)
+#define LVGL_DURATION_CRITICAL_STARTUP 200  // PERFORMANCE: Reduced critical threshold during startup (ms)
+#define LVGL_DURATION_WARNING_STARTUP 100   // PERFORMANCE: Reduced warning threshold during startup (ms)
+#define LVGL_DURATION_INFO_STARTUP 50       // PERFORMANCE: Reduced info threshold during startup (ms)
+#define LVGL_DURATION_CRITICAL_NORMAL 50    // PERFORMANCE: Reduced critical threshold during normal operation (ms)
+#define LVGL_DURATION_WARNING_NORMAL 25     // PERFORMANCE: Reduced warning threshold during normal operation (ms)
 
 // Network-free priority management (simplified)
 #define LVGL_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 1)      // Maximum UI responsiveness

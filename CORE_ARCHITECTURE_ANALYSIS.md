@@ -1,4 +1,10 @@
-# ESP32 Dual-Core Architecture Analysis
+[ 57205][E][TaskManager.cpp:532] lvglTask(): [TaskManager] [LVGL_TASK] CRITICAL: LVGL processing took 126ms (>100ms)
+[ 57333][E][TaskManager.cpp:532] lvglTask(): [TaskManager] [LVGL_TASK] CRITICAL: LVGL processing took 127ms (>100ms)
+[ 57425][W][TaskManager.cpp:534] lvglTask(): [TaskManager] [LVGL_TASK] LVGL processing took 92ms (>50ms)
+[ 60284][E][TaskManager.cpp:532] lvglTask(): [TaskManager] [LVGL_TASK] CRITICAL: LVGL processing took 225ms (>100ms)
+[ 60571][E][TaskManager.cpp:532] lvglTask(): [TaskManager] [LVGL_TASK] CRITICAL: LVGL processing took 229ms (>100ms)
+[ 60797][E][TaskManager.cpp:532] lvglTask(): [TaskManager] [LVGL_TASK] CRITICAL: LVGL processing took 225ms (>100ms)
+[ 60913][E][TaskManager.cpp:532] lvglTask(): [TaskManager] [LVGL_TASK] CRITICAL: LVGL processing took 115ms (>100ms)# ESP32 Dual-Core Architecture Analysis
 
 ## Executive Summary
 
