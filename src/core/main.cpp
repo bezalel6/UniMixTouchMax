@@ -2,6 +2,7 @@
 #include "CoreLoggingFilter.h"
 #include "core/AppController.h"
 #include "hardware/DeviceManager.h"
+#include "SimpleOTA.h"
 #include <Arduino.h>
 
 /*
@@ -64,12 +65,33 @@ void setup() {
     break;
 
   case Boot::BootMode::OTA_UPDATE:
-    log_i("=== OTA BOOT MODE ===");
-    log_i("OTA system temporarily disabled during refactoring");
-    log_w("Returning to normal mode - SimpleOTA will be implemented soon");
+    log_i("=== SIMPLE OTA BOOT MODE ===");
+    log_i("Starting SimpleOTA with dual-core architecture");
     
-    Boot::BootManager::requestNormalMode();
-    ESP.restart();
+    // Initialize basic hardware for OTA
+    if (!Hardware::Device::init()) {
+      log_e("Failed to initialize device manager for OTA");
+      Boot::BootManager::requestNormalMode();
+      ESP.restart();
+    }
+    
+    // Initialize SimpleOTA with default configuration
+    if (!SimpleOTA::initWithDefaults()) {
+      log_e("Failed to initialize SimpleOTA");
+      Boot::BootManager::requestNormalMode();
+      ESP.restart();
+    }
+    
+    // Start OTA update process  
+    if (!SimpleOTA::startUpdate()) {
+      log_e("Failed to start OTA update");
+      Boot::BootManager::requestNormalMode();
+      ESP.restart();
+    }
+    
+    log_i("SimpleOTA initialized successfully");
+    log_i("Architecture: Dual-core with smooth LVGL UI");
+    log_i("Core 0: 60 FPS UI updates | Core 1: Network operations");
     break;
 
   case Boot::BootMode::FACTORY:
@@ -101,9 +123,14 @@ void loop() {
     break;
 
   case Boot::BootMode::OTA_UPDATE:
-    // OTA mode temporarily disabled - should not reach here
-    log_w("OTA mode reached in loop - this should not happen during refactoring");
-    delay(1000);
+    // SimpleOTA handles everything in background tasks
+    // Just need to check if we should exit
+    if (!SimpleOTA::isRunning()) {
+      log_i("OTA completed - returning to normal mode");
+      Boot::BootManager::requestNormalMode();
+      ESP.restart();
+    }
+    delay(100);  // Light delay since everything runs in background
     break;
 
   default:
