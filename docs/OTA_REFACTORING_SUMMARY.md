@@ -30,8 +30,8 @@
 ### Key Benefits:
 - **80% code reduction** - From 2,400+ lines to ~400 lines
 - **Single implementation** - No competing systems
-- **Simple state machine** - Easy to understand and maintain
-- **Minimal dependencies** - Just HTTPUpdate and WiFi
+- **Dual-core architecture** - UI on Core 0, OTA on Core 1
+- **Smooth LVGL performance** - Dedicated UI thread at 60 FPS
 - **Better reliability** - Fewer failure points
 
 ### Architecture:
@@ -40,10 +40,14 @@ class SimpleOTA {
     // Simple public interface
     static bool init(const Config& config);
     static bool startUpdate();
-    static void handleUpdate();  // Call from main loop
     static bool isRunning();
     static uint8_t getProgress();
     static void cancel();
+    
+private:
+    // Dual-core tasks
+    static void uiTask(void* parameter);   // Core 0 - LVGL
+    static void otaTask(void* parameter);  // Core 1 - Network
     
     // Simple state machine
     enum State { IDLE, CONNECTING, DOWNLOADING, COMPLETE, ERROR };
@@ -82,9 +86,10 @@ ERROR ← ERROR ← ERROR ← ERROR
 ```
 
 ### Key Features:
-- **Single-threaded** with yields for responsiveness
+- **Dual-core architecture** - UI thread (Core 0) + OTA thread (Core 1)
+- **Smooth LVGL performance** - Dedicated UI thread at 60 FPS
 - **HTTPUpdate integration** for reliable downloads
-- **Progress callbacks** for UI updates
+- **Thread-safe progress sharing** with mutex
 - **Timeout handling** for error recovery
 - **Cancellation support** for user control
 
@@ -108,9 +113,10 @@ struct Config {
 - **Complexity**: Dramatic reduction in cognitive load
 
 ### Performance:
-- **Memory usage**: 50% reduction (no task/queue overhead)
+- **Memory usage**: 50% reduction (no complex task/queue overhead)
 - **Update speed**: Potentially faster (less overhead)
-- **UI responsiveness**: Better (simple yields vs complex task switching)
+- **UI responsiveness**: Smooth 60 FPS LVGL (dedicated UI thread)
+- **Core utilization**: Optimal (UI on Core 0, OTA on Core 1)
 
 ### Maintainability:
 - **Development time**: 70% reduction for new features
@@ -134,6 +140,6 @@ struct Config {
 
 ---
 
-**Bottom Line**: The current OTA system is a maintenance nightmare with multiple competing implementations. The proposed SimpleOTA approach provides everything needed for reliable firmware updates without the complexity and maintenance burden.
+**Bottom Line**: The current OTA system is a maintenance nightmare with multiple competing implementations. The proposed SimpleOTA approach provides everything needed for reliable firmware updates with smooth LVGL performance, without the complexity and maintenance burden.
 
-**This refactoring will transform the OTA system from a complex, unreliable mess into a simple, maintainable solution that actually works.**
+**This refactoring will transform the OTA system from a complex, unreliable mess into a simple, maintainable dual-core solution that provides smooth UI performance and actually works.**

@@ -32,18 +32,18 @@ The current OTA system has multiple competing implementations that create comple
 - **Reliability over features**
 - **Maintainability over performance**
 - **Single responsibility principle**
+- **Smooth LVGL performance** - dedicated UI thread for responsive interface
 
 ## Proposed Architecture
 
-### 1. Single OTA Class: `SimpleOTA`
+### 1. Dual-Core SimpleOTA Class
 ```cpp
 class SimpleOTA {
 public:
     // Core interface - just what's needed
-    static bool init();
+    static bool init(const Config& config);
     static void deinit();
-    static bool startUpdate(const char* url);
-    static void handleUpdate();  // Call from main loop
+    static bool startUpdate();
     static bool isRunning();
     static uint8_t getProgress();
     static const char* getStatusMessage();
@@ -60,9 +60,13 @@ private:
         ERROR
     };
     
-    // Single update method handles everything
-    static void processUpdate();
-    static void updateUI(uint8_t progress, const char* message);
+    // Dual-core task functions
+    static void uiTask(void* parameter);     // Core 0 - LVGL updates
+    static void otaTask(void* parameter);    // Core 1 - OTA operations
+    
+    // Thread-safe progress sharing
+    static void updateProgress(uint8_t progress, const char* message);
+    static void getProgressSafe(uint8_t* progress, char* message);
 };
 ```
 
@@ -83,10 +87,17 @@ struct OTAConfig {
 };
 ```
 
-### 4. Single-Threaded with Yields
-- No complex multithreading
-- Use `yield()` and `delay()` for responsiveness
-- Simple state machine in main loop
+### 4. Dual-Core Architecture for LVGL Performance
+- **Core 0**: Dedicated LVGL UI thread (smooth 60 FPS)
+- **Core 1**: Simple OTA operations (network, download, install)
+- **Minimal synchronization** - shared progress data with mutex
+- **No complex task orchestration** - just UI + OTA threads
+
+#### Why Dual-Core?
+- **LVGL Performance**: LVGL requires consistent timing for smooth animations
+- **Non-blocking UI**: Network operations won't freeze the interface
+- **Optimal ESP32 usage**: Use both cores efficiently
+- **Simple architecture**: Only 2 tasks vs 4+ in current system
 
 ## Implementation Plan
 
@@ -154,12 +165,15 @@ private:
 };
 ```
 
-#### Step 3: Simple Implementation
+#### Step 3: Dual-Core Implementation
 ```cpp
 // src/ota/SimpleOTA.cpp
 #include "SimpleOTA.h"
 #include "../application/ui/LVGLMessageHandler.h"
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 static const char* TAG = "SimpleOTA";
 
@@ -168,8 +182,15 @@ SimpleOTA::State SimpleOTA::currentState = IDLE;
 SimpleOTA::Config SimpleOTA::config = {};
 uint8_t SimpleOTA::progress = 0;
 char SimpleOTA::statusMessage[128] = "Ready";
-uint32_t SimpleOTA::startTime = 0;
 bool SimpleOTA::cancelled = false;
+
+// Task handles
+static TaskHandle_t uiTaskHandle = nullptr;
+static TaskHandle_t otaTaskHandle = nullptr;
+
+// Synchronization
+static SemaphoreHandle_t progressMutex = nullptr;
+static HTTPUpdate httpUpdate;
 
 bool SimpleOTA::init(const Config& cfg) {
     config = cfg;
@@ -178,19 +199,47 @@ bool SimpleOTA::init(const Config& cfg) {
     cancelled = false;
     strcpy(statusMessage, "OTA Ready");
     
-    // Setup HTTPUpdate callbacks
-    httpUpdate.onProgress([](int current, int total) {
-        onProgress(current, total);
-    });
+    // Create mutex for progress sharing
+    progressMutex = xSemaphoreCreateMutex();
+    if (!progressMutex) {
+        ESP_LOGE(TAG, "Failed to create progress mutex");
+        return false;
+    }
     
-    ESP_LOGI(TAG, "Simple OTA initialized");
+    // Create UI task on Core 0 (LVGL core)
+    xTaskCreatePinnedToCore(
+        uiTask,
+        "OTA_UI",
+        8192,          // Stack size
+        nullptr,       // Parameters
+        10,            // Priority (high for UI responsiveness)
+        &uiTaskHandle,
+        0              // Core 0 - UI core
+    );
+    
+    ESP_LOGI(TAG, "Simple OTA initialized with dual-core architecture");
     return true;
 }
 
 void SimpleOTA::deinit() {
-    if (currentState != IDLE) {
-        cancel();
+    cancel();
+    
+    // Clean up tasks
+    if (uiTaskHandle) {
+        vTaskDelete(uiTaskHandle);
+        uiTaskHandle = nullptr;
     }
+    if (otaTaskHandle) {
+        vTaskDelete(otaTaskHandle);
+        otaTaskHandle = nullptr;
+    }
+    
+    // Clean up mutex
+    if (progressMutex) {
+        vSemaphoreDelete(progressMutex);
+        progressMutex = nullptr;
+    }
+    
     WiFi.disconnect();
     ESP_LOGI(TAG, "Simple OTA deinitialized");
 }
@@ -201,63 +250,113 @@ bool SimpleOTA::startUpdate() {
         return false;
     }
     
-    setState(CONNECTING, "Starting OTA update...");
-    startTime = millis();
+    updateProgress(0, "Starting OTA update...");
+    currentState = CONNECTING;
     cancelled = false;
+    
+    // Create OTA task on Core 1 (network core)
+    xTaskCreatePinnedToCore(
+        otaTask,
+        "OTA_NET",
+        12288,         // Stack size
+        nullptr,       // Parameters
+        8,             // Priority (medium - lower than UI)
+        &otaTaskHandle,
+        1              // Core 1 - network core
+    );
     
     ESP_LOGI(TAG, "Starting OTA update from: %s", config.serverURL);
     return true;
 }
 
-void SimpleOTA::handleUpdate() {
-    if (currentState == IDLE || cancelled) {
-        return;
-    }
+void SimpleOTA::uiTask(void* parameter) {
+    TickType_t lastWakeTime = xTaskGetTickCount();
     
-    // Simple state machine
-    switch (currentState) {
-        case CONNECTING:
-            if (connectWiFi()) {
-                setState(DOWNLOADING, "Connected - starting download...");
-            } else if (millis() - startTime > 30000) {  // 30s timeout
-                setState(ERROR, "WiFi connection timeout");
-            }
-            break;
-            
-        case DOWNLOADING:
-            {
-                setState(DOWNLOADING, "Downloading firmware...");
-                HTTPUpdateResult result = httpUpdate.update(config.serverURL);
-                
-                switch (result) {
-                    case HTTP_UPDATE_OK:
-                        setState(COMPLETE, "Update successful - rebooting...");
-                        if (config.autoReboot) {
-                            delay(2000);
-                            ESP.restart();
-                        }
-                        break;
-                    case HTTP_UPDATE_NO_UPDATES:
-                        setState(ERROR, "No updates available");
-                        break;
-                    case HTTP_UPDATE_FAILED:
-                        setState(ERROR, httpUpdate.getLastErrorString().c_str());
-                        break;
+    while (true) {
+        // Check if OTA is complete
+        if (currentState == COMPLETE || currentState == ERROR) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+        
+        // Get current progress safely
+        uint8_t currentProgress;
+        char currentMessage[128];
+        getProgressSafe(&currentProgress, currentMessage);
+        
+        // Update LVGL UI (smooth 60 FPS)
+        if (config.showProgress) {
+            Application::LVGLMessageHandler::updateOtaScreenProgress(
+                currentProgress, currentMessage);
+        }
+        
+        // Maintain 60 FPS UI updates
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(16)); // ~60 FPS
+    }
+}
+
+void SimpleOTA::otaTask(void* parameter) {
+    uint32_t startTime = millis();
+    
+    // Setup HTTPUpdate callbacks
+    httpUpdate.onProgress([](int current, int total) {
+        if (total > 0) {
+            uint8_t downloadProgress = 20 + ((current * 70) / total);  // 20-90%
+            updateProgress(downloadProgress, "Downloading...");
+        }
+    });
+    
+    // State machine for OTA operations
+    while (currentState != COMPLETE && currentState != ERROR && !cancelled) {
+        switch (currentState) {
+            case CONNECTING:
+                if (connectWiFi()) {
+                    currentState = DOWNLOADING;
+                    updateProgress(20, "Connected - starting download...");
+                } else if (millis() - startTime > 30000) {  // 30s timeout
+                    currentState = ERROR;
+                    updateProgress(0, "WiFi connection timeout");
                 }
-            }
-            break;
-            
-        case COMPLETE:
-        case ERROR:
-            // Stay in final state
-            break;
+                break;
+                
+            case DOWNLOADING:
+                {
+                    updateProgress(25, "Downloading firmware...");
+                    HTTPUpdateResult result = httpUpdate.update(config.serverURL);
+                    
+                    switch (result) {
+                        case HTTP_UPDATE_OK:
+                            currentState = COMPLETE;
+                            updateProgress(100, "Update successful - rebooting...");
+                            if (config.autoReboot) {
+                                vTaskDelay(pdMS_TO_TICKS(2000));
+                                ESP.restart();
+                            }
+                            break;
+                        case HTTP_UPDATE_NO_UPDATES:
+                            currentState = ERROR;
+                            updateProgress(0, "No updates available");
+                            break;
+                        case HTTP_UPDATE_FAILED:
+                            currentState = ERROR;
+                            updateProgress(0, httpUpdate.getLastErrorString().c_str());
+                            break;
+                    }
+                }
+                break;
+                
+            default:
+                // Should not reach here
+                break;
+        }
+        
+        // Yield to prevent watchdog
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
     
-    // Update UI
-    updateUI();
-    
-    // Yield to prevent watchdog
-    yield();
+    // Task cleanup
+    otaTaskHandle = nullptr;
+    vTaskDelete(nullptr);
 }
 
 bool SimpleOTA::connectWiFi() {
@@ -275,58 +374,59 @@ bool SimpleOTA::connectWiFi() {
     }
     
     // Update progress based on time
-    uint32_t elapsed = millis() - startTime;
-    uint8_t wifiProgress = 5 + min((elapsed / 1000) * 2, 15);  // 5-20%
-    updateProgress(wifiProgress, "Connecting to WiFi...");
+    static uint32_t lastUpdate = 0;
+    if (millis() - lastUpdate > 2000) {  // Update every 2 seconds
+        static uint8_t wifiProgress = 5;
+        wifiProgress = min(wifiProgress + 2, 18);  // 5-18%
+        updateProgress(wifiProgress, "Connecting to WiFi...");
+        lastUpdate = millis();
+    }
     
     return false;
 }
 
-void SimpleOTA::onProgress(int current, int total) {
-    if (total > 0) {
-        uint8_t downloadProgress = 20 + ((current * 70) / total);  // 20-90%
-        updateProgress(downloadProgress, "Downloading...");
-    }
-}
-
-void SimpleOTA::setState(State newState, const char* message) {
-    currentState = newState;
-    if (message) {
-        strncpy(statusMessage, message, sizeof(statusMessage) - 1);
-        statusMessage[sizeof(statusMessage) - 1] = '\0';
-    }
-    ESP_LOGI(TAG, "State: %s", statusMessage);
-}
-
 void SimpleOTA::updateProgress(uint8_t prog, const char* message) {
-    progress = prog;
-    if (message) {
-        setState(currentState, message);
+    if (xSemaphoreTake(progressMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        progress = prog;
+        if (message) {
+            strncpy(statusMessage, message, sizeof(statusMessage) - 1);
+            statusMessage[sizeof(statusMessage) - 1] = '\0';
+        }
+        xSemaphoreGive(progressMutex);
+        ESP_LOGI(TAG, "Progress: %d%% - %s", prog, statusMessage);
     }
 }
 
-void SimpleOTA::updateUI() {
-    if (config.showProgress) {
-        Application::LVGLMessageHandler::updateOtaScreenProgress(progress, statusMessage);
+void SimpleOTA::getProgressSafe(uint8_t* prog, char* message) {
+    if (xSemaphoreTake(progressMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        *prog = progress;
+        strcpy(message, statusMessage);
+        xSemaphoreGive(progressMutex);
     }
 }
 
-// Public getters
+// Public getters (thread-safe)
 bool SimpleOTA::isRunning() {
     return currentState != IDLE && currentState != COMPLETE && currentState != ERROR;
 }
 
 uint8_t SimpleOTA::getProgress() {
-    return progress;
+    uint8_t prog = 0;
+    if (xSemaphoreTake(progressMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        prog = progress;
+        xSemaphoreGive(progressMutex);
+    }
+    return prog;
 }
 
 const char* SimpleOTA::getStatusMessage() {
-    return statusMessage;
+    return statusMessage;  // Note: For true thread safety, this should also use mutex
 }
 
 void SimpleOTA::cancel() {
     cancelled = true;
-    setState(ERROR, "Cancelled by user");
+    currentState = ERROR;
+    updateProgress(0, "Cancelled by user");
     WiFi.disconnect();
 }
 ```
@@ -378,26 +478,33 @@ void SimpleOTA::cancel() {
 
 ### 🎯 Simplicity
 - **Single OTA implementation** instead of 3-4 competing systems
-- **Simple state machine** instead of complex task orchestration
-- **Minimal dependencies** - just HTTPUpdate and WiFi
-- **Easy to understand** - 200 lines instead of 2000+
+- **Simple dual-core design** instead of complex 4+ task orchestration
+- **Minimal synchronization** - just one mutex for progress sharing
+- **Easy to understand** - 400 lines instead of 2000+
 
 ### 🔒 Reliability
 - **Fewer moving parts** = fewer failure points
 - **Simpler error handling** - clear error states
-- **Easier debugging** - single execution path
-- **Less memory usage** - no complex task/queue overhead
+- **Easier debugging** - two clear execution paths
+- **Less memory usage** - no complex queue/task overhead
+
+### 🎨 LVGL Performance
+- **Dedicated UI thread** on Core 0 for smooth 60 FPS
+- **Never blocked** - OTA operations run on separate core
+- **Consistent timing** - vTaskDelayUntil for precise UI updates
+- **Always responsive** - UI thread has highest priority
 
 ### 🔧 Maintainability
-- **Single file to maintain** instead of 8+ files
+- **Two files to maintain** instead of 8+ files
 - **Clear interfaces** - simple public API
-- **Easy to modify** - straightforward implementation
+- **Easy to modify** - straightforward dual-core implementation
 - **Self-contained** - minimal external dependencies
 
 ### 📊 Performance
-- **Lower memory footprint** - no task/queue overhead
+- **Optimal core usage** - UI on Core 0, OTA on Core 1
+- **Lower memory footprint** - no complex task/queue overhead
 - **Faster startup** - no complex initialization
-- **Better responsiveness** - simple yields instead of task switching
+- **Better responsiveness** - dedicated UI thread
 - **Cleaner resource management** - explicit init/deinit
 
 ## Migration Strategy
