@@ -2,8 +2,6 @@
 #include "CoreLoggingFilter.h"
 #include "core/AppController.h"
 #include "hardware/DeviceManager.h"
-#include "ota/OTAApplication.h"
-#include "MultithreadedOTAApplication.h"
 #include <Arduino.h>
 
 /*
@@ -66,18 +64,12 @@ void setup() {
     break;
 
   case Boot::BootMode::OTA_UPDATE:
-    log_i("=== MULTITHREADED OTA BOOT MODE ===");
-    log_i("Starting advanced multithreaded OTA application");
-
-    if (!OTA::MultithreadedOTAApplication::init()) {
-      log_e("Failed to initialize multithreaded OTA application");
-      Boot::BootManager::requestNormalMode();
-      ESP.restart();
-    }
-
-    log_i("Multithreaded OTA Application initialized successfully");
-    log_i("Architecture: Responsive dual-core OTA with 60 FPS UI");
-    log_i("Core 0: 60 FPS UI updates | Core 1: Network + Download operations");
+    log_i("=== OTA BOOT MODE ===");
+    log_i("OTA system temporarily disabled during refactoring");
+    log_w("Returning to normal mode - SimpleOTA will be implemented soon");
+    
+    Boot::BootManager::requestNormalMode();
+    ESP.restart();
     break;
 
   case Boot::BootMode::FACTORY:
@@ -109,9 +101,9 @@ void loop() {
     break;
 
   case Boot::BootMode::OTA_UPDATE:
-    // Multithreaded OTA application loop
-    OTA::MultithreadedOTAApplication::run();
-    delay(250); // Longer delay since all work is done in background tasks
+    // OTA mode temporarily disabled - should not reach here
+    log_w("OTA mode reached in loop - this should not happen during refactoring");
+    delay(1000);
     break;
 
   default:
