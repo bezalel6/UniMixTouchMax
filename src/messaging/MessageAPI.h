@@ -79,7 +79,7 @@ class MessageAPI {
     // TRANSPORT MANAGEMENT
     // =============================================================================
 
-    // Network transports (MQTT, HTTP, etc.) available only during OTA mode
+    // Network transports (MQTT, HTTP, etc.) not currently available
     // Normal mode uses only local transports (Serial, etc.) for maximum performance
 
     /**

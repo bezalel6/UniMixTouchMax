@@ -17,7 +17,7 @@ namespace Messaging {
 // =============================================================================
 
 /**
- * EXTERNAL MESSAGE - Received over available transports (Serial in normal mode, network in OTA mode)
+ * EXTERNAL MESSAGE - Received over available transports (Serial in normal mode)
  * EFFICIENT: Pre-parsed by transport, no raw payload storage
  * SECURITY: Validation and sanitization required
  */
