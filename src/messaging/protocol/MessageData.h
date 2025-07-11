@@ -11,7 +11,43 @@
 #include <MessageProtocol.h>
 #include <StringAbstraction.h>
 
+// NEW REFACTORED MESSAGING SYSTEM - Include new headers
+#include "MessageShapes.h"
+#include "JsonToVariantConverter.h"
+#include "MessageShapeDefinitions.h"
+#include "RefactoredExternalMessage.h"
+
 namespace Messaging {
+
+// =============================================================================
+// MIGRATION NOTICE
+// =============================================================================
+/*
+ * 🚀 REFACTORED MESSAGING SYSTEM NOW AVAILABLE!
+ * 
+ * The new system eliminates JsonDocument dependency and provides:
+ * - Type-safe message access: message.getTypedData<AudioStatusResponseShape>()
+ * - Automatic validation with detailed error messages
+ * - Performance improvements (parse once, access many times)
+ * - Compile-time verification of message shapes
+ * 
+ * TO USE THE NEW SYSTEM:
+ * 1. Replace ExternalMessage with RefactoredExternalMessage
+ * 2. Use RefactoredExternalMessage::fromJsonString() for parsing
+ * 3. Access data with getTypedData<MessageShapeType>()
+ * 
+ * EXAMPLE:
+ *   auto parseResult = RefactoredExternalMessage::fromJsonString(jsonPayload);
+ *   if (parseResult.isValid()) {
+ *       auto audioData = parseResult.getValue().getTypedData<AudioStatusResponseShape>();
+ *       if (audioData.isValid()) {
+ *           // Use audioData.getValue().deviceId, etc.
+ *       }
+ *   }
+ * 
+ * The old ExternalMessage class below is kept for backward compatibility
+ * during migration. It will be deprecated once migration is complete.
+ */
 
 // =============================================================================
 // FORWARD DECLARATIONS
