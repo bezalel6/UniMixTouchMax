@@ -247,16 +247,14 @@ void MessageBusLogoSupplier::onAssetResponse(const Messaging::AssetResponseData&
 }
 
 bool MessageBusLogoSupplier::sendAssetRequest(const AssetRequest& request) {
-    String jsonPayload = createAssetRequestJson(request);
+    // Create external message directly - no JSON round-trip!
+    Messaging::ExternalMessage message = Messaging::ExternalMessage::createAssetRequest(
+        request.processName, 
+        request.deviceId, 
+        request.requestId
+    );
 
-    // Create external message using the type-safe system
-    auto parseResult = Messaging::ExternalMessage::fromJsonString(jsonPayload);
-    if (!parseResult.isValid()) {
-        ESP_LOGE(TAG, "Failed to create external message: %s", STRING_C_STR(parseResult.getError()));
-        return false;
-    }
-
-    return Messaging::MessageAPI::publishExternal(parseResult.getValue());
+    return Messaging::MessageAPI::publishExternal(message);
 }
 
 void MessageBusLogoSupplier::timeoutExpiredRequests() {
@@ -367,19 +365,7 @@ AssetResponse MessageBusLogoSupplier::parseAssetResponse(const String& jsonPaylo
     return response;
 }
 
-String MessageBusLogoSupplier::createAssetRequestJson(const AssetRequest& request) {
-    // Create asset request using the type-safe system
-    Messaging::AssetRequestShape shape;
-    shape.deviceId = request.deviceId;
-    shape.processName = request.processName;
-    shape.requestId = request.requestId;
-    shape.timestamp = request.timestamp;
-    
-    Messaging::MessageVariantMap variantMap = shape.serialize();
-    variantMap[STRING_FROM_LITERAL("messageType")] = SERIALIZE_EXTERNAL_MSG_TYPE(Messaging::Config::EXT_MSG_GET_ASSETS);
-    
-    return Messaging::JsonToVariantConverter::variantMapToJsonString(variantMap);
-}
+
 
 void MessageBusLogoSupplier::completeRequest(const String& requestId, const AssetResponse& response) {
     MUTEX_GUARD_VOID(requestMutex, MANAGER_DEFAULT_MUTEX_TIMEOUT_MS, TAG, "request completion");

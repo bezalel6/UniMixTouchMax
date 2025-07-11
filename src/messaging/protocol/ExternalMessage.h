@@ -101,7 +101,51 @@ public:
     // =============================================================================
     
     /**
-     * Create ExternalMessage from JSON string
+     * Create ExternalMessage directly from typed data (preferred method)
+     */
+    template<typename ShapeType>
+    static ExternalMessage create(const ShapeType& shape) {
+        ExternalMessage message;
+        message.messageType_ = ShapeType::MESSAGE_TYPE;
+        message.variantData_ = shape.serialize();
+        message.validated_ = true;
+        message.timestamp_ = millis();
+        message.extractCommonFields();
+        return message;
+    }
+    
+    /**
+     * Create asset request message directly
+     */
+    static ExternalMessage createAssetRequest(const string& processName, 
+                                            const string& deviceId = STRING_EMPTY, 
+                                            const string& requestId = STRING_EMPTY) {
+        AssetRequestShape shape;
+        shape.processName = processName;
+        shape.deviceId = deviceId;
+        shape.requestId = STRING_IS_EMPTY(requestId) ? 
+            STRING_FROM_LITERAL("req-") + string(std::to_string(millis())) : requestId;
+        shape.timestamp = millis();
+        
+        return create(shape);
+    }
+    
+    /**
+     * Create status request message directly
+     */
+    static ExternalMessage createStatusRequest(const string& deviceId = STRING_EMPTY, 
+                                             const string& requestId = STRING_EMPTY) {
+        StatusRequestShape shape;
+        shape.deviceId = deviceId;
+        shape.requestId = STRING_IS_EMPTY(requestId) ? 
+            STRING_FROM_LITERAL("req-") + string(std::to_string(millis())) : requestId;
+        shape.timestamp = millis();
+        
+        return create(shape);
+    }
+
+    /**
+     * Create ExternalMessage from JSON string (for received messages)
      */
     static ParseResult<ExternalMessage> fromJsonString(const string& jsonString) {
         // Step 1: Parse JSON to variant map

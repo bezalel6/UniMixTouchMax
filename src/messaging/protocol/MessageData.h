@@ -444,36 +444,13 @@ bool enhancedStringCopy(char (&dest)[BufferSize], const string& src, const char*
 
 class MessageFactory {
    public:
-    // Create typed external messages using the new shape system
+    // Create typed external messages directly (no JSON round-trip!)
     static ExternalMessage createStatusRequest(const string& deviceId = STRING_EMPTY) {
-        StatusRequestShape shape;
-        shape.deviceId = deviceId;
-        shape.requestId = STRING_FROM_LITERAL("req-") + string(std::to_string(millis()));
-        shape.timestamp = millis();
-        
-        MessageVariantMap variantMap = shape.serialize();
-        variantMap[STRING_FROM_LITERAL("messageType")] = STRING_FROM_LITERAL("STATUS_REQUEST");
-        
-        string jsonString = JsonToVariantConverter::variantMapToJsonString(variantMap);
-        auto parseResult = ExternalMessage::fromJsonString(jsonString);
-        
-        return parseResult.isValid() ? parseResult.getValue() : ExternalMessage();
+        return ExternalMessage::createStatusRequest(deviceId);
     }
     
     static ExternalMessage createAssetRequest(const string& processName, const string& deviceId = STRING_EMPTY) {
-        AssetRequestShape shape;
-        shape.deviceId = deviceId;
-        shape.processName = processName;
-        shape.requestId = STRING_FROM_LITERAL("req-") + string(std::to_string(millis()));
-        shape.timestamp = millis();
-        
-        MessageVariantMap variantMap = shape.serialize();
-        variantMap[STRING_FROM_LITERAL("messageType")] = STRING_FROM_LITERAL("ASSET_REQUEST");
-        
-        string jsonString = JsonToVariantConverter::variantMapToJsonString(variantMap);
-        auto parseResult = ExternalMessage::fromJsonString(jsonString);
-        
-        return parseResult.isValid() ? parseResult.getValue() : ExternalMessage();
+        return ExternalMessage::createAssetRequest(processName, deviceId);
     }
 
     // ENHANCED SAFE INTERNAL MESSAGE FACTORIES
