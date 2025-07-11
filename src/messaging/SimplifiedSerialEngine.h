@@ -6,7 +6,7 @@
 #include <freertos/queue.h>
 #include <driver/uart.h>
 #include "Message.h"
-#include "protocol/BinaryProtocol.h"
+#include <BinaryProtocol.h>
 
 namespace Messaging {
 
