@@ -444,7 +444,7 @@ bool enhancedStringCopy(char (&dest)[BufferSize], const string& src, const char*
 
 class MessageFactory {
    public:
-    // Create typed external messages directly (no JSON round-trip!)
+    // Create typed external messages directly
     static ExternalMessage createStatusRequest(const string& deviceId = STRING_EMPTY) {
         return ExternalMessage::createStatusRequest(deviceId);
     }
@@ -693,6 +693,14 @@ inline ParseResult<AssetResponseData> parseAssetResponseData(const ExternalMessa
 namespace MessageSerializer {
 
 /**
+ * Template helper to create JSON from any message shape
+ */
+template<typename ShapeType>
+inline ParseResult<string> createJsonFromShape(const ShapeType& shape) {
+    return ParseResult<string>::createSuccess(shape.toJsonString());
+}
+
+/**
  * Serialize InternalMessage to JSON string (for debugging/logging)
  */
 inline ParseResult<string> serializeInternalMessage(const InternalMessage& message) {
@@ -722,10 +730,8 @@ inline ParseResult<string> createStatusResponse(const AudioStatusData& data) {
     shape.activeSessionCount = data.activeSessionCount;
     shape.timestamp = data.timestamp;
     
-    MessageVariantMap variantMap = shape.serialize();
-    variantMap[STRING_FROM_LITERAL("messageType")] = STRING_FROM_LITERAL("STATUS_RESPONSE");
-    
-    string jsonString = JsonToVariantConverter::variantMapToJsonString(variantMap);
+    // Use shape's direct JSON generation
+    string jsonString = shape.toJsonString();
     return ParseResult<string>::createSuccess(jsonString);
 }
 
@@ -739,10 +745,8 @@ inline ParseResult<string> createAssetRequest(const string& processName, const s
     shape.requestId = STRING_FROM_LITERAL("req-") + string(std::to_string(millis()));
     shape.timestamp = millis();
     
-    MessageVariantMap variantMap = shape.serialize();
-    variantMap[STRING_FROM_LITERAL("messageType")] = STRING_FROM_LITERAL("ASSET_REQUEST");
-    
-    string jsonString = JsonToVariantConverter::variantMapToJsonString(variantMap);
+    // Use shape's direct JSON generation
+    string jsonString = shape.toJsonString();
     return ParseResult<string>::createSuccess(jsonString);
 }
 

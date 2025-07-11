@@ -279,8 +279,48 @@ public:
     
     /**
      * Convert back to JSON string for transmission
+     * Uses the shape's direct JSON generation for efficiency
      */
     string toJsonString() const {
+        // Route to appropriate shape's toJsonString() method
+        switch (messageType_) {
+            case MessageProtocol::ExternalMessageType::STATUS_RESPONSE: {
+                auto shapeResult = getTypedData<AudioStatusResponseShape>();
+                if (shapeResult.isValid()) {
+                    return shapeResult.getValue().toJsonString();
+                }
+                break;
+            }
+            
+            case MessageProtocol::ExternalMessageType::ASSET_RESPONSE: {
+                auto shapeResult = getTypedData<AssetResponseShape>();
+                if (shapeResult.isValid()) {
+                    return shapeResult.getValue().toJsonString();
+                }
+                break;
+            }
+            
+            case MessageProtocol::ExternalMessageType::STATUS_REQUEST: {
+                auto shapeResult = getTypedData<StatusRequestShape>();
+                if (shapeResult.isValid()) {
+                    return shapeResult.getValue().toJsonString();
+                }
+                break;
+            }
+            
+            case MessageProtocol::ExternalMessageType::ASSET_REQUEST: {
+                auto shapeResult = getTypedData<AssetRequestShape>();
+                if (shapeResult.isValid()) {
+                    return shapeResult.getValue().toJsonString();
+                }
+                break;
+            }
+            
+            default:
+                break;
+        }
+        
+        // Fallback to variant map conversion
         return JsonToVariantConverter::variantMapToJsonString(variantData_);
     }
     

@@ -62,7 +62,20 @@ IMPLEMENT_MESSAGE_SHAPE(AudioStatusResponseShape,
     SERIALIZE_STRING_FIELD(defaultDeviceDataFlow)
     SERIALIZE_STRING_FIELD(defaultDeviceRole)
     SERIALIZE_INT_FIELD(activeSessionCount)
-    SERIALIZE_INT_FIELD(timestamp)
+    SERIALIZE_INT_FIELD(timestamp),
+    
+    // JSON generation fields
+    JSON_STRING_FIELD(deviceId)
+    JSON_STRING_FIELD(requestId)
+    JSON_STRING_FIELD(reason)
+    JSON_BOOL_FIELD(hasDefaultDevice)
+    JSON_STRING_FIELD(defaultDeviceName)
+    JSON_FLOAT_FIELD(defaultDeviceVolume)
+    JSON_BOOL_FIELD(defaultDeviceIsMuted)
+    JSON_STRING_FIELD(defaultDeviceDataFlow)
+    JSON_STRING_FIELD(defaultDeviceRole)
+    JSON_INT_FIELD(activeSessionCount)
+    JSON_INT_FIELD(timestamp)
 )
 
 // =============================================================================
@@ -118,7 +131,19 @@ IMPLEMENT_MESSAGE_SHAPE(AssetResponseShape,
     SERIALIZE_INT_FIELD(width)
     SERIALIZE_INT_FIELD(height)
     SERIALIZE_STRING_FIELD(format)
-    SERIALIZE_INT_FIELD(timestamp)
+    SERIALIZE_INT_FIELD(timestamp),
+    
+    // JSON generation fields
+    JSON_STRING_FIELD(deviceId)
+    JSON_STRING_FIELD(requestId)
+    JSON_STRING_FIELD(processName)
+    JSON_BOOL_FIELD(success)
+    JSON_STRING_FIELD(errorMessage)
+    JSON_STRING_FIELD(assetDataBase64)
+    JSON_INT_FIELD(width)
+    JSON_INT_FIELD(height)
+    JSON_STRING_FIELD(format)
+    JSON_INT_FIELD(timestamp)
 )
 
 // =============================================================================
@@ -146,7 +171,12 @@ IMPLEMENT_MESSAGE_SHAPE(StatusRequestShape,
     // Serialization fields
     SERIALIZE_STRING_FIELD(deviceId)
     SERIALIZE_STRING_FIELD(requestId)
-    SERIALIZE_INT_FIELD(timestamp)
+    SERIALIZE_INT_FIELD(timestamp),
+    
+    // JSON generation fields
+    JSON_STRING_FIELD(deviceId)
+    JSON_STRING_FIELD(requestId)
+    JSON_INT_FIELD(timestamp)
 )
 
 // =============================================================================
@@ -178,7 +208,13 @@ IMPLEMENT_MESSAGE_SHAPE(AssetRequestShape,
     SERIALIZE_STRING_FIELD(deviceId)
     SERIALIZE_STRING_FIELD(requestId)
     SERIALIZE_STRING_FIELD(processName)
-    SERIALIZE_INT_FIELD(timestamp)
+    SERIALIZE_INT_FIELD(timestamp),
+    
+    // JSON generation fields
+    JSON_STRING_FIELD(deviceId)
+    JSON_STRING_FIELD(requestId)
+    JSON_STRING_FIELD(processName)
+    JSON_INT_FIELD(timestamp)
 )
 
 // =============================================================================

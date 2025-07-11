@@ -68,8 +68,7 @@ class MessageBusLogoSupplier : public LogoSupplier {
     void onAssetResponse(const Messaging::AssetResponseData& assetData);
     bool sendAssetRequest(const AssetRequest& request);
     void timeoutExpiredRequests();
-    AssetResponse parseAssetResponse(const String& jsonPayload);
-    String createAssetRequestJson(const AssetRequest& request);
+
     void completeRequest(const String& requestId, const AssetResponse& response);
     void failRequest(const String& requestId, const char* errorMessage);
     void processQueuedRequests();

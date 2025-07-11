@@ -182,8 +182,12 @@ inline ValidationResult validateFloat(const MessageFieldValue& value,
         /* Creation function declaration */ \
         static ShapeName create(const MessageVariantMap& data); \
         \
-        /* Serialization function declaration */ \
+        /* Serialization function declarations */ \
         MessageVariantMap serialize() const; \
+        string toJsonString() const; \
+        \
+        /* Direct creation from JSON */ \
+        static ParseResult<ShapeName> fromJsonString(const string& json); \
         \
         /* Default constructor */ \
         ShapeName() = default; \
@@ -401,6 +405,78 @@ inline ValidationResult validateFloat(const MessageFieldValue& value,
     }
 
 /**
+ * Begin JSON string generation implementation
+ */
+#define MESSAGE_SHAPE_JSON_BEGIN(ShapeName) \
+    string ShapeName::toJsonString() const { \
+        string json = STRING_FROM_LITERAL("{"); \
+        json += STRING_FROM_LITERAL("\"messageType\":\""); \
+        json += MessageProtocol::externalMessageTypeToString(MESSAGE_TYPE); \
+        json += STRING_FROM_LITERAL("\",");
+
+/**
+ * Generate JSON for string field
+ */
+#define JSON_STRING_FIELD(fieldName) \
+    if (!STRING_IS_EMPTY(fieldName)) { \
+        json += STRING_FROM_LITERAL("\"" #fieldName "\":\""); \
+        json += fieldName; \
+        json += STRING_FROM_LITERAL("\","); \
+    }
+
+/**
+ * Generate JSON for boolean field
+ */
+#define JSON_BOOL_FIELD(fieldName) \
+    json += STRING_FROM_LITERAL("\"" #fieldName "\":"); \
+    json += fieldName ? STRING_FROM_LITERAL("true") : STRING_FROM_LITERAL("false"); \
+    json += STRING_FROM_LITERAL(",");
+
+/**
+ * Generate JSON for integer field
+ */
+#define JSON_INT_FIELD(fieldName) \
+    json += STRING_FROM_LITERAL("\"" #fieldName "\":"); \
+    json += std::to_string(fieldName); \
+    json += STRING_FROM_LITERAL(",");
+
+/**
+ * Generate JSON for float field
+ */
+#define JSON_FLOAT_FIELD(fieldName) \
+    json += STRING_FROM_LITERAL("\"" #fieldName "\":"); \
+    char floatBuffer[32]; \
+    snprintf(floatBuffer, sizeof(floatBuffer), "%.2f", fieldName); \
+    json += floatBuffer; \
+    json += STRING_FROM_LITERAL(",");
+
+/**
+ * End JSON string generation implementation
+ */
+#define MESSAGE_SHAPE_JSON_END() \
+        /* Remove trailing comma */ \
+        if (STRING_LENGTH(json) > 0 && json[STRING_LENGTH(json) - 1] == ',') { \
+            json = string(json, 0, STRING_LENGTH(json) - 1); \
+        } \
+        json += STRING_FROM_LITERAL("}"); \
+        return json; \
+    } \
+    \
+    ParseResult<ShapeName> ShapeName::fromJsonString(const string& jsonStr) { \
+        auto parseResult = JsonToVariantConverter::parseJsonString(jsonStr); \
+        if (!parseResult.isValid()) { \
+            return ParseResult<ShapeName>::createError(parseResult.getError()); \
+        } \
+        \
+        auto validation = validate(parseResult.getData()); \
+        if (!validation.isValid()) { \
+            return ParseResult<ShapeName>::createError(validation.getError()); \
+        } \
+        \
+        return ParseResult<ShapeName>::createSuccess(create(parseResult.getData())); \
+    }
+
+/**
  * End message shape definition
  */
 #define MESSAGE_SHAPE_END() \
@@ -492,9 +568,9 @@ public:
     MESSAGE_SHAPE_END()
 
 /**
- * Implement all required methods for a message shape
+ * Implement all required methods for a message shape with JSON generation
  */
-#define IMPLEMENT_MESSAGE_SHAPE(ShapeName, ValidationFields, CreationFields, SerializationFields) \
+#define IMPLEMENT_MESSAGE_SHAPE(ShapeName, ValidationFields, CreationFields, SerializationFields, JsonFields) \
     MESSAGE_SHAPE_VALIDATION_BEGIN(ShapeName) \
     ValidationFields \
     MESSAGE_SHAPE_VALIDATION_END() \
@@ -505,6 +581,10 @@ public:
     \
     MESSAGE_SHAPE_SERIALIZATION_BEGIN(ShapeName) \
     SerializationFields \
-    MESSAGE_SHAPE_SERIALIZATION_END()
+    MESSAGE_SHAPE_SERIALIZATION_END() \
+    \
+    MESSAGE_SHAPE_JSON_BEGIN(ShapeName) \
+    JsonFields \
+    MESSAGE_SHAPE_JSON_END()
 
 } // namespace Messaging

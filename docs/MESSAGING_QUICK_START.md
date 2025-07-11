@@ -13,21 +13,44 @@ The messaging system provides type-safe, validated message handling with compile
 
 ## 📝 How to Use
 
-### 1. Define Message Shapes (Already Done)
+### 1. Direct Shape-to-JSON Conversion
 
 ```cpp
-// Example: Audio Status Response
-DEFINE_MESSAGE_SHAPE(AudioStatusResponseShape, STATUS_RESPONSE,
-    REQUIRED_STRING_FIELD(deviceId, 64)
-    REQUIRED_STRING_FIELD(requestId, 64)
-    REQUIRED_BOOL_FIELD(hasDefaultDevice)
-    OPTIONAL_FLOAT_FIELD(defaultDeviceVolume, 0.0f, 100.0f)
-    REQUIRED_INT_FIELD(activeSessionCount, 0, 1000)
-    REQUIRED_INT_FIELD(timestamp, 0, INT_MAX)
-)
+// Create a message shape
+AssetRequestShape shape;
+shape.processName = "firefox.exe";
+shape.deviceId = "ESP32-001";
+shape.requestId = "req-12345";
+shape.timestamp = millis();
+
+// Convert directly to JSON - no intermediate steps!
+string json = shape.toJsonString();
+// Output: {"messageType":"ASSET_REQUEST","deviceId":"ESP32-001",...}
+
+// Or parse JSON directly to shape
+auto result = AssetRequestShape::fromJsonString(json);
+if (result.isValid()) {
+    AssetRequestShape parsed = result.getValue();
+    // Use parsed.processName, etc.
+}
 ```
 
-### 2. Parse JSON Messages
+### 2. Creating Messages for Sending
+
+```cpp
+// Method 1: Direct ExternalMessage creation (recommended)
+ExternalMessage msg = ExternalMessage::createAssetRequest("firefox.exe", "ESP32-001");
+MessageAPI::publishExternal(msg);
+
+// Method 2: Using shape directly for JSON
+AssetRequestShape shape;
+shape.processName = "firefox.exe";
+shape.deviceId = "ESP32-001";
+string json = shape.toJsonString();
+// Send json over transport...
+```
+
+### 3. Parse Received JSON Messages
 
 ```cpp
 // Parse JSON with automatic validation
@@ -38,7 +61,7 @@ if (parseResult.isValid()) {
 }
 ```
 
-### 3. Access Message Data (Type-Safe)
+### 4. Access Message Data (Type-Safe)
 
 ```cpp
 // Get strongly-typed data
@@ -54,7 +77,7 @@ if (audioDataResult.isValid()) {
 }
 ```
 
-### 4. Handle Different Message Types
+### 5. Handle Different Message Types
 
 ```cpp
 void handleMessage(const string& jsonPayload) {
@@ -150,7 +173,10 @@ IMPLEMENT_MESSAGE_SHAPE(MyNewMessageShape,
     ASSIGN_INT_FIELD(customNumber),
     
     SERIALIZE_STRING_FIELD(customField)
-    SERIALIZE_INT_FIELD(customNumber)
+    SERIALIZE_INT_FIELD(customNumber),
+    
+    JSON_STRING_FIELD(customField)
+    JSON_INT_FIELD(customNumber)
 )
 ```
 

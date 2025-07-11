@@ -299,71 +299,7 @@ void MessageBusLogoSupplier::timeoutExpiredRequests() {
     MUTEX_RELEASE(requestMutex, TAG, "timeout expired requests");
 }
 
-AssetResponse MessageBusLogoSupplier::parseAssetResponse(const String& jsonPayload) {
-    AssetResponse response;
-    JsonDocument doc;
 
-    DeserializationError error = deserializeJson(doc, jsonPayload);
-    if (error) {
-        ESP_LOGW(TAG, "Failed to parse asset response JSON: %s", error.c_str());
-        return response;
-    }
-
-    // Extract basic fields with new enum-based messageType handling
-    MessageProtocol::ExternalMessageType msgType = SAFE_DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "messageType");
-    response.messageType = msgType;
-    response.requestId = doc["requestId"] | "";
-    response.deviceId = doc["deviceId"] | "";
-    response.processName = doc["processName"] | "";
-    response.success = doc["success"] | false;
-    response.errorMessage = doc["errorMessage"] | "";
-    response.timestamp = Hardware::Device::getMillis();
-
-    // Parse simplified metadata if present
-    if (doc["metadata"].is<JsonObject>() && !doc["metadata"].isNull()) {
-        JsonObject metadataObj = doc["metadata"];
-
-        // Extract simple width/height for the simplified response
-        response.width = metadataObj["width"] | 0;
-        response.height = metadataObj["height"] | 0;
-
-        String format = metadataObj["format"] | "bin";
-        response.format = format;
-    }
-
-    // Parse asset data if present (base64 encoded)
-    if (doc["assetData"].is<String>() && !doc["assetData"].isNull()) {
-        String base64Data = doc["assetData"];
-        if (!base64Data.isEmpty()) {
-            // Calculate decoded size
-            size_t decodedSize = (base64Data.length() * 3) / 4;
-            if (decodedSize > 0 && decodedSize <= 100000) {  // 100KB max size
-                                                             // Allocate memory for decoded data
-#if CONFIG_SPIRAM_USE_MALLOC
-                response.assetData = (uint8_t*)ps_malloc(decodedSize);
-#else
-                response.assetData = (uint8_t*)malloc(decodedSize);
-#endif
-                if (response.assetData) {
-                    size_t actualSize = 0;
-                    int result = mbedtls_base64_decode(response.assetData, decodedSize,
-                                                       &actualSize, (const unsigned char*)base64Data.c_str(),
-                                                       base64Data.length());
-                    if (result == 0) {
-                        response.assetDataSize = actualSize;
-                        response.hasAssetData = true;
-                    } else {
-                        free(response.assetData);
-                        response.assetData = nullptr;
-                        ESP_LOGW(TAG, "Failed to decode base64 asset data");
-                    }
-                }
-            }
-        }
-    }
-
-    return response;
-}
 
 
 
