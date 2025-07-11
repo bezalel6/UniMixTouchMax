@@ -1,10 +1,10 @@
 #include "MessageBusLogoSupplier.h"
 #include "../messaging/protocol/MessageConfig.h"
+#include "../messaging/protocol/MessageData.h"
 #include "../hardware/DeviceManager.h"
 #include "../logo/LogoManager.h"
 #include "ManagerMacros.h"
 #include <esp_log.h>
-#include <ArduinoJson.h>
 #include <mbedtls/base64.h>
 
 static const char* TAG = "MBLogoSupplier";
@@ -249,16 +249,14 @@ void MessageBusLogoSupplier::onAssetResponse(const Messaging::AssetResponseData&
 bool MessageBusLogoSupplier::sendAssetRequest(const AssetRequest& request) {
     String jsonPayload = createAssetRequestJson(request);
 
-    // Create external message using the new dual message type system
-    Messaging::ExternalMessage externalMessage(
-        Messaging::Config::EXT_MSG_GET_ASSETS,
-        request.requestId,
-        request.deviceId);
+    // Create external message using the type-safe system
+    auto parseResult = Messaging::ExternalMessage::fromJsonString(jsonPayload);
+    if (!parseResult.isValid()) {
+        ESP_LOGE(TAG, "Failed to create external message: %s", STRING_C_STR(parseResult.getError()));
+        return false;
+    }
 
-    // Parse the JSON into the message's parsedData
-    deserializeJson(externalMessage.parsedData, jsonPayload);
-
-    return Messaging::MessageAPI::publishExternal(externalMessage);
+    return Messaging::MessageAPI::publishExternal(parseResult.getValue());
 }
 
 void MessageBusLogoSupplier::timeoutExpiredRequests() {
@@ -370,18 +368,17 @@ AssetResponse MessageBusLogoSupplier::parseAssetResponse(const String& jsonPaylo
 }
 
 String MessageBusLogoSupplier::createAssetRequestJson(const AssetRequest& request) {
-    JsonDocument doc;
-
-    // Use enum-based messageType for consistency with new dual system
-    doc["messageType"] = SERIALIZE_EXTERNAL_MSG_TYPE(Messaging::Config::EXT_MSG_GET_ASSETS);
-    doc["requestId"] = request.requestId;
-    doc["deviceId"] = request.deviceId;
-    doc["processName"] = request.processName;
-    doc["timestamp"] = request.timestamp;
-
-    String result;
-    serializeJson(doc, result);
-    return result;
+    // Create asset request using the type-safe system
+    Messaging::AssetRequestShape shape;
+    shape.deviceId = request.deviceId;
+    shape.processName = request.processName;
+    shape.requestId = request.requestId;
+    shape.timestamp = request.timestamp;
+    
+    Messaging::MessageVariantMap variantMap = shape.serialize();
+    variantMap[STRING_FROM_LITERAL("messageType")] = SERIALIZE_EXTERNAL_MSG_TYPE(Messaging::Config::EXT_MSG_GET_ASSETS);
+    
+    return Messaging::JsonToVariantConverter::variantMapToJsonString(variantMap);
 }
 
 void MessageBusLogoSupplier::completeRequest(const String& requestId, const AssetResponse& response) {

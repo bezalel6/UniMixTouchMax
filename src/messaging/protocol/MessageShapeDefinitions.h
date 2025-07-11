@@ -200,19 +200,19 @@ inline void registerAllMessageShapes() {
 }
 
 /**
- * Initialize the refactored messaging system
- * Call this once during startup to set up the new system
+ * Initialize the messaging system
+ * Call this once during startup to set up the system
  */
-inline void initializeRefactoredMessaging() {
-    ESP_LOGI("RefactoredMessaging", "Initializing refactored messaging system...");
+inline void initializeMessagingSystem() {
+    ESP_LOGI("Messaging", "Initializing messaging system...");
     
     // Register all message shapes
     registerAllMessageShapes();
     
-    ESP_LOGI("RefactoredMessaging", "✅ Refactored messaging system initialized successfully!");
-    ESP_LOGI("RefactoredMessaging", "🚀 Type-safe messaging is now available!");
-    ESP_LOGI("RefactoredMessaging", "💡 Use RefactoredExternalMessage::fromJsonString() for parsing");
-    ESP_LOGI("RefactoredMessaging", "📊 Use getTypedData<MessageShapeType>() for type-safe access");
+    ESP_LOGI("Messaging", "✅ Messaging system initialized successfully!");
+    ESP_LOGI("Messaging", "🚀 Type-safe messaging is now available!");
+    ESP_LOGI("Messaging", "💡 Use ExternalMessage::fromJsonString() for parsing");
+    ESP_LOGI("Messaging", "📊 Use getTypedData<MessageShapeType>() for type-safe access");
 }
 
 } // namespace Messaging

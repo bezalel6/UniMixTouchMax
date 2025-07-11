@@ -17,7 +17,7 @@ namespace Messaging {
 // =============================================================================
 
 /**
- * REFACTORED EXTERNAL MESSAGE - No more JsonDocument dependency!
+ * EXTERNAL MESSAGE - Type-safe messaging without JsonDocument!
  * 
  * Features:
  * - Type-safe variant-based storage
@@ -26,9 +26,9 @@ namespace Messaging {
  * - Compile-time message shape verification
  * - Zero-copy message handling where possible
  */
-class RefactoredExternalMessage {
+class ExternalMessage {
 private:
-    static constexpr const char* TAG = "RefactoredExternalMessage";
+    static constexpr const char* TAG = "ExternalMessage";
     
     MessageProtocol::ExternalMessageType messageType_;
     string requestId_;
@@ -48,14 +48,14 @@ public:
     // CONSTRUCTORS AND BASIC PROPERTIES
     // =============================================================================
     
-    RefactoredExternalMessage() 
+    ExternalMessage() 
         : messageType_(MessageProtocol::ExternalMessageType::INVALID)
         , timestamp_(millis())
         , validated_(false) {}
     
-    RefactoredExternalMessage(MessageProtocol::ExternalMessageType type, 
-                             const string& reqId = STRING_EMPTY, 
-                             const string& devId = STRING_EMPTY)
+    ExternalMessage(MessageProtocol::ExternalMessageType type, 
+                    const string& reqId = STRING_EMPTY, 
+                    const string& devId = STRING_EMPTY)
         : messageType_(type)
         , requestId_(reqId)
         , deviceId_(devId)
@@ -63,7 +63,7 @@ public:
         , validated_(false) {}
     
     // Move constructor for efficient message handling
-    RefactoredExternalMessage(RefactoredExternalMessage&& other) noexcept 
+    ExternalMessage(ExternalMessage&& other) noexcept 
         : messageType_(other.messageType_)
         , requestId_(std::move(other.requestId_))
         , deviceId_(std::move(other.deviceId_))
@@ -74,7 +74,7 @@ public:
         , cachedHandler_(std::move(other.cachedHandler_)) {}
     
     // Move assignment operator
-    RefactoredExternalMessage& operator=(RefactoredExternalMessage&& other) noexcept {
+    ExternalMessage& operator=(ExternalMessage&& other) noexcept {
         if (this != &other) {
             messageType_ = other.messageType_;
             requestId_ = std::move(other.requestId_);
@@ -101,21 +101,20 @@ public:
     // =============================================================================
     
     /**
-     * Create RefactoredExternalMessage from JSON string
-     * This replaces the old JsonDocument-based parsing
+     * Create ExternalMessage from JSON string
      */
-    static ParseResult<RefactoredExternalMessage> fromJsonString(const string& jsonString) {
+    static ParseResult<ExternalMessage> fromJsonString(const string& jsonString) {
         // Step 1: Parse JSON to variant map
         auto parseResult = JsonToVariantConverter::parseJsonString(jsonString);
         if (!parseResult.isValid()) {
             ESP_LOGE(TAG, "JSON parsing failed: %s", STRING_C_STR(parseResult.getError()));
-            return ParseResult<RefactoredExternalMessage>::createError(parseResult.getError());
+            return ParseResult<ExternalMessage>::createError(parseResult.getError());
         }
         
         // Step 2: Extract message type
         auto messageType = JsonToVariantConverter::extractMessageType(parseResult.getData());
         if (messageType == MessageProtocol::ExternalMessageType::INVALID) {
-            return ParseResult<RefactoredExternalMessage>::createError(
+            return ParseResult<ExternalMessage>::createError(
                 STRING_FROM_LITERAL("Invalid or missing message type"));
         }
         
@@ -123,7 +122,7 @@ public:
         auto commonValidation = JsonToVariantConverter::validateCommonFields(parseResult.getData());
         if (!commonValidation.isValid()) {
             ESP_LOGE(TAG, "Common field validation failed: %s", STRING_C_STR(commonValidation.getError()));
-            return ParseResult<RefactoredExternalMessage>::createError(commonValidation.getError());
+            return ParseResult<ExternalMessage>::createError(commonValidation.getError());
         }
         
         // Step 4: Type-specific validation using message shape registry
@@ -131,11 +130,11 @@ public:
         auto validation = registry.validateMessage(messageType, parseResult.getData());
         if (!validation.isValid()) {
             ESP_LOGE(TAG, "Message shape validation failed: %s", STRING_C_STR(validation.getError()));
-            return ParseResult<RefactoredExternalMessage>::createError(validation.getError());
+            return ParseResult<ExternalMessage>::createError(validation.getError());
         }
         
         // Step 5: Create the message
-        RefactoredExternalMessage message;
+        ExternalMessage message;
         message.messageType_ = messageType;
         message.variantData_ = parseResult.getData();
         message.validated_ = true;
@@ -144,10 +143,10 @@ public:
         // Extract common fields from variant data
         message.extractCommonFields();
         
-        ESP_LOGD(TAG, "Successfully created RefactoredExternalMessage of type %d", 
+        ESP_LOGD(TAG, "Successfully created ExternalMessage of type %d", 
                  static_cast<int>(messageType));
         
-        return ParseResult<RefactoredExternalMessage>::createSuccess(std::move(message));
+        return ParseResult<ExternalMessage>::createSuccess(std::move(message));
     }
     
     // =============================================================================
@@ -203,75 +202,6 @@ public:
         return result.isValid();
     }
     
-    // =============================================================================
-    // BACKWARD COMPATIBILITY METHODS
-    // =============================================================================
-    
-    /**
-     * Legacy string accessor - for backward compatibility
-     * NOTE: This should be phased out in favor of getTypedData<>()
-     */
-    string getString(const string& field, const string& defaultValue = STRING_EMPTY) const {
-        auto it = variantData_.find(field);
-        if (it == variantData_.end()) {
-            return defaultValue;
-        }
-        
-        if (std::holds_alternative<string>(it->second)) {
-            return std::get<string>(it->second);
-        }
-        
-        return defaultValue;
-    }
-    
-    /**
-     * Legacy boolean accessor - for backward compatibility
-     */
-    bool getBool(const string& field, bool defaultValue = false) const {
-        auto it = variantData_.find(field);
-        if (it == variantData_.end()) {
-            return defaultValue;
-        }
-        
-        if (std::holds_alternative<bool>(it->second)) {
-            return std::get<bool>(it->second);
-        }
-        
-        return defaultValue;
-    }
-    
-    /**
-     * Legacy integer accessor - for backward compatibility
-     */
-    int getInt(const string& field, int defaultValue = 0) const {
-        auto it = variantData_.find(field);
-        if (it == variantData_.end()) {
-            return defaultValue;
-        }
-        
-        if (std::holds_alternative<int>(it->second)) {
-            return std::get<int>(it->second);
-        }
-        
-        return defaultValue;
-    }
-    
-    /**
-     * Legacy float accessor - for backward compatibility
-     */
-    float getFloat(const string& field, float defaultValue = 0.0f) const {
-        auto it = variantData_.find(field);
-        if (it == variantData_.end()) {
-            return defaultValue;
-        }
-        
-        if (std::holds_alternative<float>(it->second)) {
-            return std::get<float>(it->second);
-        }
-        
-        return defaultValue;
-    }
-    
     /**
      * Check if field exists
      */
@@ -325,7 +255,7 @@ public:
      * Debug print message contents
      */
     void debugPrint() const {
-        ESP_LOGD(TAG, "RefactoredExternalMessage:");
+        ESP_LOGD(TAG, "ExternalMessage:");
         ESP_LOGD(TAG, "  Type: %d", static_cast<int>(messageType_));
         ESP_LOGD(TAG, "  Request ID: %s", STRING_C_STR(requestId_));
         ESP_LOGD(TAG, "  Device ID: %s", STRING_C_STR(deviceId_));
@@ -365,6 +295,6 @@ private:
 // TYPE ALIASES FOR CONVENIENCE
 // =============================================================================
 
-using RefactoredExtMsg = RefactoredExternalMessage;
+using ExtMsg = ExternalMessage;
 
 } // namespace Messaging

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <vector>
 #include <memory>
 #include <functional>
@@ -11,49 +10,18 @@
 #include <MessageProtocol.h>
 #include <StringAbstraction.h>
 
-// NEW REFACTORED MESSAGING SYSTEM - Include new headers
+// Include the new type-safe messaging system
 #include "MessageShapes.h"
 #include "JsonToVariantConverter.h"
 #include "MessageShapeDefinitions.h"
-#include "RefactoredExternalMessage.h"
+#include "ExternalMessage.h"
 
 namespace Messaging {
-
-// =============================================================================
-// MIGRATION NOTICE
-// =============================================================================
-/*
- * 🚀 REFACTORED MESSAGING SYSTEM NOW AVAILABLE!
- * 
- * The new system eliminates JsonDocument dependency and provides:
- * - Type-safe message access: message.getTypedData<AudioStatusResponseShape>()
- * - Automatic validation with detailed error messages
- * - Performance improvements (parse once, access many times)
- * - Compile-time verification of message shapes
- * 
- * TO USE THE NEW SYSTEM:
- * 1. Replace ExternalMessage with RefactoredExternalMessage
- * 2. Use RefactoredExternalMessage::fromJsonString() for parsing
- * 3. Access data with getTypedData<MessageShapeType>()
- * 
- * EXAMPLE:
- *   auto parseResult = RefactoredExternalMessage::fromJsonString(jsonPayload);
- *   if (parseResult.isValid()) {
- *       auto audioData = parseResult.getValue().getTypedData<AudioStatusResponseShape>();
- *       if (audioData.isValid()) {
- *           // Use audioData.getValue().deviceId, etc.
- *       }
- *   }
- * 
- * The old ExternalMessage class below is kept for backward compatibility
- * during migration. It will be deprecated once migration is complete.
- */
 
 // =============================================================================
 // FORWARD DECLARATIONS
 // =============================================================================
 
-struct ExternalMessage;
 struct InternalMessage;
 
 // =============================================================================
@@ -92,89 +60,7 @@ struct ParseResult {
     const string& getError() const { return error; }
 };
 
-// =============================================================================
-// EXTERNAL MESSAGE TYPES - For messages received over transports
-// =============================================================================
 
-/**
- * EXTERNAL MESSAGE - Received over available transports (Serial in normal mode)
- * EFFICIENT: Pre-parsed by transport, no raw payload storage
- * SECURITY: Validation and sanitization required
- */
-struct ExternalMessage {
-    MessageProtocol::ExternalMessageType messageType;
-    string requestId;
-    string deviceId;
-    string originatingDeviceId;
-    unsigned long timestamp;
-    bool validated = false;
-
-    // Type-specific parsed data (transport provides this)
-    JsonDocument parsedData;
-
-    ExternalMessage() : parsedData() {
-        messageType = MessageProtocol::ExternalMessageType::INVALID;
-        timestamp = millis();
-    }
-
-    ExternalMessage(MessageProtocol::ExternalMessageType type, const string& reqId = STRING_EMPTY, const string& devId = STRING_EMPTY)
-        : messageType(type), requestId(reqId), deviceId(devId), parsedData() {
-        timestamp = millis();
-    }
-
-    // Direct access to parsed data with type safety - basic types only
-    string getString(const string& field, const string& defaultValue = STRING_EMPTY) const {
-        auto value = parsedData[STRING_C_STR(field)];
-        if (value.isNull()) {
-            return defaultValue;
-        }
-        return STRING_FROM_CSTR(value.as<const char*>());
-    }
-
-    bool getBool(const string& field, bool defaultValue = false) const {
-        auto value = parsedData[STRING_C_STR(field)];
-        if (value.isNull()) {
-            return defaultValue;
-        }
-        return value.as<bool>();
-    }
-
-    int getInt(const string& field, int defaultValue = 0) const {
-        auto value = parsedData[STRING_C_STR(field)];
-        if (value.isNull()) {
-            return defaultValue;
-        }
-        return value.as<int>();
-    }
-
-    float getFloat(const string& field, float defaultValue = 0.0f) const {
-        auto value = parsedData[STRING_C_STR(field)];
-        if (value.isNull()) {
-            return defaultValue;
-        }
-        return value.as<float>();
-    }
-
-    // Check if field exists and is an object
-    bool isObject(const string& field) const {
-        return parsedData[STRING_C_STR(field)].is<JsonObject>();
-    }
-
-    // Check if field exists
-    bool hasField(const string& field) const {
-        return !parsedData[STRING_C_STR(field)].isNull();
-    }
-
-    // Validation and security methods (implemented in MessageData.cpp)
-    bool isSelfOriginated() const;
-    bool requiresResponse() const;
-    MessageProtocol::ExternalMessageCategory getCategory() const {
-        return MessageProtocol::getExternalMessageCategory(messageType);
-    }
-    MessageProtocol::MessagePriority getPriority() const {
-        return MessageProtocol::getExternalMessagePriority(messageType);
-    }
-};
 
 // =============================================================================
 // AUDIO DATA STRUCTURES
@@ -309,7 +195,19 @@ struct AssetResponseData {
     unsigned long timestamp = 0;
 
     AssetResponseData() = default;
-    AssetResponseData(const ExternalMessage& external);
+    
+    // Create from typed message data
+    AssetResponseData(const AssetResponseShape& shape)
+        : requestId(shape.requestId)
+        , deviceId(shape.deviceId)
+        , processName(shape.processName)
+        , success(shape.success)
+        , errorMessage(shape.errorMessage)
+        , assetDataBase64(shape.assetDataBase64)
+        , width(shape.width)
+        , height(shape.height)
+        , format(shape.format)
+        , timestamp(shape.timestamp) {}
 };
 
 // =============================================================================
@@ -546,9 +444,37 @@ bool enhancedStringCopy(char (&dest)[BufferSize], const string& src, const char*
 
 class MessageFactory {
    public:
-    // Create typed external messages (using string abstraction)
-    static ExternalMessage createStatusRequest(const string& deviceId = STRING_EMPTY);
-    static ExternalMessage createAssetRequest(const string& processName, const string& deviceId = STRING_EMPTY);
+    // Create typed external messages using the new shape system
+    static ExternalMessage createStatusRequest(const string& deviceId = STRING_EMPTY) {
+        StatusRequestShape shape;
+        shape.deviceId = deviceId;
+        shape.requestId = STRING_FROM_LITERAL("req-") + string(std::to_string(millis()));
+        shape.timestamp = millis();
+        
+        MessageVariantMap variantMap = shape.serialize();
+        variantMap[STRING_FROM_LITERAL("messageType")] = STRING_FROM_LITERAL("STATUS_REQUEST");
+        
+        string jsonString = JsonToVariantConverter::variantMapToJsonString(variantMap);
+        auto parseResult = ExternalMessage::fromJsonString(jsonString);
+        
+        return parseResult.isValid() ? parseResult.getValue() : ExternalMessage();
+    }
+    
+    static ExternalMessage createAssetRequest(const string& processName, const string& deviceId = STRING_EMPTY) {
+        AssetRequestShape shape;
+        shape.deviceId = deviceId;
+        shape.processName = processName;
+        shape.requestId = STRING_FROM_LITERAL("req-") + string(std::to_string(millis()));
+        shape.timestamp = millis();
+        
+        MessageVariantMap variantMap = shape.serialize();
+        variantMap[STRING_FROM_LITERAL("messageType")] = STRING_FROM_LITERAL("ASSET_REQUEST");
+        
+        string jsonString = JsonToVariantConverter::variantMapToJsonString(variantMap);
+        auto parseResult = ExternalMessage::fromJsonString(jsonString);
+        
+        return parseResult.isValid() ? parseResult.getValue() : ExternalMessage();
+    }
 
     // ENHANCED SAFE INTERNAL MESSAGE FACTORIES
     // Same method signatures for backward compatibility, but now with enhanced safety
@@ -634,13 +560,52 @@ namespace MessageConverter {
  * Convert validated ExternalMessage to InternalMessage(s)
  * One external message might generate multiple internal messages
  */
-std::vector<InternalMessage> externalToInternal(const ExternalMessage& external);
+inline std::vector<InternalMessage> externalToInternal(const ExternalMessage& external) {
+    std::vector<InternalMessage> internalMessages;
+    
+    // Route based on external message type
+    switch (external.getMessageType()) {
+        case MessageProtocol::ExternalMessageType::STATUS_RESPONSE: {
+            auto audioDataResult = external.getTypedData<AudioStatusResponseShape>();
+            if (audioDataResult.isValid()) {
+                InternalMessage msg(MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE);
+                internalMessages.push_back(msg);
+            }
+            break;
+        }
+        
+        case MessageProtocol::ExternalMessageType::ASSET_RESPONSE: {
+            auto assetDataResult = external.getTypedData<AssetResponseShape>();
+            if (assetDataResult.isValid()) {
+                InternalMessage msg(MessageProtocol::InternalMessageType::LOGO_UPDATE);
+                internalMessages.push_back(msg);
+            }
+            break;
+        }
+        
+        default:
+            // Other message types not yet handled
+            break;
+    }
+    
+    return internalMessages;
+}
 
 /**
  * Convert InternalMessage to ExternalMessage for transmission
  * Used when ESP32 needs to send messages to external systems
  */
-ExternalMessage internalToExternal(const InternalMessage& internal);
+inline ExternalMessage internalToExternal(const InternalMessage& internal) {
+    // Create appropriate external message based on internal type
+    switch (internal.messageType) {
+        case MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE:
+            return MessageFactory::createStatusRequest();
+            
+        default:
+            // Return empty message for unsupported conversions
+            return ExternalMessage();
+    }
+}
 
 }  // namespace MessageConverter
 
@@ -662,27 +627,85 @@ namespace MessageParser {
 /**
  * Parse external message type from JSON payload with error handling
  */
-ParseResult<MessageProtocol::ExternalMessageType> parseExternalMessageType(const string& jsonPayload);
+inline ParseResult<MessageProtocol::ExternalMessageType> parseExternalMessageType(const string& jsonPayload) {
+    auto parseResult = JsonToVariantConverter::parseJsonString(jsonPayload);
+    if (!parseResult.isValid()) {
+        return ParseResult<MessageProtocol::ExternalMessageType>::createError(parseResult.getError());
+    }
+    
+    auto messageType = JsonToVariantConverter::extractMessageType(parseResult.getData());
+    return ParseResult<MessageProtocol::ExternalMessageType>::createSuccess(messageType);
+}
 
 /**
  * Parse complete external message from JSON payload with comprehensive error handling
  */
-ParseResult<ExternalMessage> parseExternalMessage(const string& jsonPayload);
+inline ParseResult<ExternalMessage> parseExternalMessage(const string& jsonPayload) {
+    return ExternalMessage::fromJsonString(jsonPayload);
+}
 
 /**
  * Check if message should be ignored (self-originated, invalid, etc.)
  */
-bool shouldIgnoreMessage(const ExternalMessage& message, const string& myDeviceId = Config::getDeviceId());
+inline bool shouldIgnoreMessage(const ExternalMessage& message, const string& myDeviceId = STRING_EMPTY) {
+    if (message.getMessageType() == MessageProtocol::ExternalMessageType::INVALID) {
+        return true;
+    }
+    
+    if (!STRING_IS_EMPTY(myDeviceId) && message.isSelfOriginated()) {
+        return true;
+    }
+    
+    return false;
+}
 
 /**
  * Type-safe audio status parsing
  */
-ParseResult<AudioStatusData> parseAudioStatusData(const ExternalMessage& message);
+inline ParseResult<AudioStatusData> parseAudioStatusData(const ExternalMessage& message) {
+    if (message.getMessageType() != MessageProtocol::ExternalMessageType::STATUS_RESPONSE) {
+        return ParseResult<AudioStatusData>::createError(STRING_FROM_LITERAL("Not a STATUS_RESPONSE message"));
+    }
+    
+    auto shapeResult = message.getTypedData<AudioStatusResponseShape>();
+    if (!shapeResult.isValid()) {
+        return ParseResult<AudioStatusData>::createError(shapeResult.getError());
+    }
+    
+    const auto& shape = shapeResult.getValue();
+    AudioStatusData data;
+    
+    data.hasDefaultDevice = shape.hasDefaultDevice;
+    data.defaultDevice.friendlyName = shape.defaultDeviceName;
+    data.defaultDevice.volume = shape.defaultDeviceVolume;
+    data.defaultDevice.isMuted = shape.defaultDeviceIsMuted;
+    data.defaultDevice.dataFlow = shape.defaultDeviceDataFlow;
+    data.defaultDevice.deviceRole = shape.defaultDeviceRole;
+    data.timestamp = shape.timestamp;
+    data.reason = shape.reason;
+    data.originatingDeviceId = shape.deviceId;
+    data.originatingRequestId = shape.requestId;
+    data.activeSessionCount = shape.activeSessionCount;
+    
+    return ParseResult<AudioStatusData>::createSuccess(data);
+}
 
 /**
  * Type-safe asset response parsing
  */
-ParseResult<AssetResponseData> parseAssetResponseData(const ExternalMessage& message);
+inline ParseResult<AssetResponseData> parseAssetResponseData(const ExternalMessage& message) {
+    if (message.getMessageType() != MessageProtocol::ExternalMessageType::ASSET_RESPONSE) {
+        return ParseResult<AssetResponseData>::createError(STRING_FROM_LITERAL("Not an ASSET_RESPONSE message"));
+    }
+    
+    auto shapeResult = message.getTypedData<AssetResponseShape>();
+    if (!shapeResult.isValid()) {
+        return ParseResult<AssetResponseData>::createError(shapeResult.getError());
+    }
+    
+    AssetResponseData data(shapeResult.getValue());
+    return ParseResult<AssetResponseData>::createSuccess(data);
+}
 
 }  // namespace MessageParser
 
@@ -695,17 +718,56 @@ namespace MessageSerializer {
 /**
  * Serialize InternalMessage to JSON string (for debugging/logging)
  */
-ParseResult<string> serializeInternalMessage(const InternalMessage& message);
+inline ParseResult<string> serializeInternalMessage(const InternalMessage& message) {
+    string jsonString = STRING_FROM_LITERAL("{\"messageType\":\"");
+    jsonString += STRING_FROM_LITERAL("INTERNAL_") + std::to_string(static_cast<int>(message.messageType));
+    jsonString += STRING_FROM_LITERAL("\",\"timestamp\":");
+    jsonString += std::to_string(message.timestamp);
+    jsonString += STRING_FROM_LITERAL("}");
+    
+    return ParseResult<string>::createSuccess(jsonString);
+}
 
 /**
  * Create status response JSON from audio status data
  */
-ParseResult<string> createStatusResponse(const AudioStatusData& data);
+inline ParseResult<string> createStatusResponse(const AudioStatusData& data) {
+    AudioStatusResponseShape shape;
+    shape.deviceId = data.originatingDeviceId;
+    shape.requestId = data.originatingRequestId;
+    shape.reason = data.reason;
+    shape.hasDefaultDevice = data.hasDefaultDevice;
+    shape.defaultDeviceName = data.defaultDevice.friendlyName;
+    shape.defaultDeviceVolume = data.defaultDevice.volume;
+    shape.defaultDeviceIsMuted = data.defaultDevice.isMuted;
+    shape.defaultDeviceDataFlow = data.defaultDevice.dataFlow;
+    shape.defaultDeviceRole = data.defaultDevice.deviceRole;
+    shape.activeSessionCount = data.activeSessionCount;
+    shape.timestamp = data.timestamp;
+    
+    MessageVariantMap variantMap = shape.serialize();
+    variantMap[STRING_FROM_LITERAL("messageType")] = STRING_FROM_LITERAL("STATUS_RESPONSE");
+    
+    string jsonString = JsonToVariantConverter::variantMapToJsonString(variantMap);
+    return ParseResult<string>::createSuccess(jsonString);
+}
 
 /**
  * Create asset request JSON
  */
-ParseResult<string> createAssetRequest(const string& processName, const string& deviceId = STRING_EMPTY);
+inline ParseResult<string> createAssetRequest(const string& processName, const string& deviceId) {
+    AssetRequestShape shape;
+    shape.deviceId = deviceId;
+    shape.processName = processName;
+    shape.requestId = STRING_FROM_LITERAL("req-") + string(std::to_string(millis()));
+    shape.timestamp = millis();
+    
+    MessageVariantMap variantMap = shape.serialize();
+    variantMap[STRING_FROM_LITERAL("messageType")] = STRING_FROM_LITERAL("ASSET_REQUEST");
+    
+    string jsonString = JsonToVariantConverter::variantMapToJsonString(variantMap);
+    return ParseResult<string>::createSuccess(jsonString);
+}
 
 }  // namespace MessageSerializer
 
