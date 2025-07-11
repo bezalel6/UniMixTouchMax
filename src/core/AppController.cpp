@@ -6,7 +6,6 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
 #include "../messaging/Message.h"
-#include "../messaging/MessageMigrationAdapter.h"
 #include "../messaging/MessagingInit.h"
 #include "../application/audio/AudioManager.h"
 #include "../application/audio/AudioUI.h"
@@ -136,14 +135,7 @@ bool init(void) {
     // Messaging already running - no need to start anything
 
     // Post-initialization debug test
-    ESP_LOGI(TAG, "AppController initialization complete - testing debug UI log");
-
-    // Test the new DEBUG_UI_LOG functionality
-    if (Messaging::MessageAPI::publishDebugUILog("AppController initialization complete")) {
-        ESP_LOGI(TAG, "DEBUG_UI_LOG test message sent successfully");
-    } else {
-        ESP_LOGW(TAG, "Failed to send DEBUG_UI_LOG test message");
-    }
+    ESP_LOGI(TAG, "AppController initialization complete");
 
     // Send initial status request
     INIT_STEP("Sending initial status request", {

@@ -1,8 +1,5 @@
 #include "MessageBusLogoSupplier.h"
 #include "../messaging/Message.h"
-#include "../messaging/MessageMigrationAdapter.h"
-#include "../messaging/protocol/MessageConfig.h"
-#include "../messaging/protocol/MessageData.h"
 #include "../hardware/DeviceManager.h"
 #include "../logo/LogoManager.h"
 #include "ManagerMacros.h"
@@ -35,12 +32,6 @@ bool MessageBusLogoSupplier::init() {
 
     ESP_LOGI(TAG, "Initializing MessageBusLogoSupplier");
 
-    // Check if messaging system is available
-    if (!Messaging::MessageAPI::isHealthy()) {
-        ESP_LOGW(TAG, "Messaging system not healthy - will retry when available");
-        // Don't fail init, just mark as not ready until messaging is available
-    }
-
     // Create mutex for thread-safe operations
     requestMutex = xSemaphoreCreateMutex();
     if (!requestMutex) {
@@ -48,15 +39,12 @@ bool MessageBusLogoSupplier::init() {
         return false;
     }
 
-    // Subscribe to asset responses using internal message system
-    Messaging::MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::ASSET_RESPONSE,
-                                               [this](const Messaging::InternalMessage& message) {
-                                                   // Extract the asset response data
-                                                   auto* assetData = message.getTypedData<Messaging::AssetResponseData>();
-                                                   if (assetData) {
-                                                       this->onAssetResponse(*assetData);
-                                                   }
-                                               });
+    // Subscribe to asset responses using BRUTAL messaging
+    Messaging::subscribe(Messaging::Message::ASSET_RESPONSE,
+                        [this](const Messaging::Message& msg) {
+                            // Direct access to asset data
+                            this->onAssetResponse(msg);
+                        });
 
     // Clear statistics
     requestsSubmitted = 0;
@@ -79,8 +67,7 @@ void MessageBusLogoSupplier::deinit() {
 
     ESP_LOGI(TAG, "Deinitializing MessageBusLogoSupplier");
 
-    // Unsubscribe from internal messages
-    Messaging::MessageAPI::unsubscribeFromInternal(MessageProtocol::InternalMessageType::ASSET_RESPONSE);
+    // No need to unsubscribe - handlers are cleaned up automatically
 
     // Fail all pending requests
     if (requestMutex && xSemaphoreTake(requestMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
@@ -104,8 +91,7 @@ void MessageBusLogoSupplier::deinit() {
 }
 
 bool MessageBusLogoSupplier::isReady() const {
-    return initialized && Messaging::MessageAPI::isHealthy() &&
-           pendingRequests.size() < maxConcurrentRequests;
+    return initialized && pendingRequests.size() < maxConcurrentRequests;
 }
 
 bool MessageBusLogoSupplier::requestLogo(const char* processName, AssetRequestCallback callback) {
@@ -194,18 +180,21 @@ String MessageBusLogoSupplier::getStatus() const {
 // PRIVATE METHODS
 // =============================================================================
 
-void MessageBusLogoSupplier::onAssetResponse(const Messaging::AssetResponseData& assetData) {
+void MessageBusLogoSupplier::onAssetResponse(const Messaging::Message& msg) {
     REQUIRE_INIT_VOID("MessageBusLogoSupplier", initialized, TAG);
 
-    ESP_LOGD(TAG, "Received asset response from device: %s", assetData.deviceId.c_str());
+    ESP_LOGD(TAG, "Received asset response from device: %s", msg.deviceId.c_str());
 
-    // Convert AssetResponseData to AssetResponse
-    AssetResponse response = createAssetResponse(assetData.success, assetData.processName.c_str(),
-                                                 assetData.requestId.c_str(), assetData.errorMessage.c_str());
-    response.width = assetData.width;
-    response.height = assetData.height;
-    response.format = assetData.format;
-    response.timestamp = assetData.timestamp;
+    // Direct access to asset data - BRUTAL!
+    const auto& asset = msg.data.asset;
+    
+    // Convert to AssetResponse
+    AssetResponse response = createAssetResponse(asset.success, asset.processName,
+                                                 msg.requestId.c_str(), asset.errorMessage);
+    response.width = asset.width;
+    response.height = asset.height;
+    response.format = asset.format;
+    response.timestamp = msg.timestamp;
 
     if (response.requestId.isEmpty()) {
         ESP_LOGW(TAG, "Invalid asset response - missing request ID");
@@ -213,8 +202,9 @@ void MessageBusLogoSupplier::onAssetResponse(const Messaging::AssetResponseData&
     }
 
     // Decode base64 asset data if present
-    if (assetData.success && !assetData.assetDataBase64.isEmpty()) {
-        size_t decodedSize = (assetData.assetDataBase64.length() * 3) / 4;
+    if (asset.success && strlen(asset.assetDataBase64) > 0) {
+        size_t encodedLen = strlen(asset.assetDataBase64);
+        size_t decodedSize = (encodedLen * 3) / 4;
         if (decodedSize > 0 && decodedSize <= 100000) {  // 100KB max size
 #if CONFIG_SPIRAM_USE_MALLOC
             response.assetData = (uint8_t*)ps_malloc(decodedSize);
@@ -224,8 +214,8 @@ void MessageBusLogoSupplier::onAssetResponse(const Messaging::AssetResponseData&
             if (response.assetData) {
                 size_t actualSize = 0;
                 int result = mbedtls_base64_decode(response.assetData, decodedSize,
-                                                   &actualSize, (const unsigned char*)assetData.assetDataBase64.c_str(),
-                                                   assetData.assetDataBase64.length());
+                                                   &actualSize, (const unsigned char*)asset.assetDataBase64,
+                                                   encodedLen);
                 if (result == 0) {
                     response.assetDataSize = actualSize;
                     response.hasAssetData = true;
@@ -249,14 +239,11 @@ void MessageBusLogoSupplier::onAssetResponse(const Messaging::AssetResponseData&
 }
 
 bool MessageBusLogoSupplier::sendAssetRequest(const AssetRequest& request) {
-    // Create external message directly - no JSON round-trip!
-    Messaging::ExternalMessage message = Messaging::ExternalMessage::createAssetRequest(
-        request.processName, 
-        request.deviceId, 
-        request.requestId
-    );
-
-    return Messaging::MessageAPI::publishExternal(message);
+    // Create and send asset request - BRUTAL!
+    auto msg = Messaging::Message::createAssetRequest(request.processName, request.deviceId);
+    msg.requestId = request.requestId;  // Use the existing request ID
+    Messaging::sendMessage(msg);
+    return true;
 }
 
 void MessageBusLogoSupplier::timeoutExpiredRequests() {
