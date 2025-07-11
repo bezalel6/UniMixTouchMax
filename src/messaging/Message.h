@@ -129,6 +129,15 @@ public:
     
     // Send message out via serial
     void send(const Message& msg);
+    
+    // Get handler count for status
+    size_t getHandlerCount() const {
+        size_t count = 0;
+        for (const auto& [type, handlers] : handlers) {
+            count += handlers.size();
+        }
+        return count;
+    }
 };
 
 // Global convenience functions

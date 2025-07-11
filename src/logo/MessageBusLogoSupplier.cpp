@@ -1,4 +1,6 @@
 #include "MessageBusLogoSupplier.h"
+#include "../messaging/Message.h"
+#include "../messaging/MessageMigrationAdapter.h"
 #include "../messaging/protocol/MessageConfig.h"
 #include "../messaging/protocol/MessageData.h"
 #include "../hardware/DeviceManager.h"

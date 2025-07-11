@@ -1,6 +1,7 @@
 #include "AudioManager.h"
 #include "../../hardware/DeviceManager.h"
-#include "../../messaging/MessageAPI.h"
+#include "../../messaging/Message.h"
+#include "../../messaging/MessageMigrationAdapter.h"
 #include "../../messaging/protocol/MessageConfig.h"
 #include "../../logo/LogoManager.h"
 #include "../../logo/MessageBusLogoSupplier.h"

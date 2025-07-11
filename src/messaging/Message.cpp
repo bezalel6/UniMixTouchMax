@@ -1,6 +1,6 @@
 #include "Message.h"
 #include <ArduinoJson.h>
-#include "transport/SerialEngine.h"
+#include "SimplifiedSerialEngine.h"
 #include "protocol/MessageConfig.h"
 
 static const char* TAG = "Message";
@@ -236,10 +236,7 @@ void MessageRouter::send(const Message& msg) {
     ESP_LOGD(TAG, "Sending message: %s", json.c_str());
     
     // Direct send via serial engine
-    // TODO: Replace with SimplifiedSerialEngine when ready
-    // For now, using existing infrastructure
-    extern bool sendMessageDirect(const String& json);
-    sendMessageDirect(json);
+    SerialEngine::getInstance().sendRaw(json);
 }
 
 }  // namespace Messaging

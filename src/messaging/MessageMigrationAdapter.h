@@ -137,11 +137,6 @@ public:
     }
 };
 
-// Temporary global send function
-inline bool sendMessageDirect(const String& json) {
-    // This will be replaced with SimplifiedSerialEngine
-    ESP_LOGD("Adapter", "Would send: %s", json.c_str());
-    return true;
-}
+
 
 }  // namespace Messaging

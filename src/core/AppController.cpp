@@ -5,8 +5,9 @@
 #include "UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
-#include "../messaging/MessageAPI.h"
-#include "../messaging/transport/SerialEngine.h"
+#include "../messaging/Message.h"
+#include "../messaging/MessageMigrationAdapter.h"
+#include "../messaging/MessagingInit.h"
 #include "../application/audio/AudioManager.h"
 #include "../application/audio/AudioUI.h"
 #include "../logo/LogoManager.h"
@@ -67,7 +68,7 @@ bool init(void) {
         }
     });
 
-    INIT_STEP_CRITICAL("Initializing Message System", Messaging::MessageAPI::initialize());
+    INIT_STEP_CRITICAL("Initializing Message System", Messaging::initMessaging());
 
     // Network-Free Architecture
     INIT_STEP("Configuring Network-Free Architecture", {
@@ -87,19 +88,8 @@ bool init(void) {
 #if MESSAGING_ENABLE_SERIAL_TRANSPORT
         ESP_LOGI(TAG, "Initializing Core 1 Interrupt Messaging Engine");
 
-        // Initialize MessageCore first
-        if (!Messaging::MessageAPI::initialize()) {
-            ESP_LOGE(TAG, "Failed to initialize MessageCore");
-            return false;
-        }
-
-        // Initialize Core 1 Interrupt Messaging Engine
-        if (!Messaging::Core1::InterruptMessagingEngine::init()) {
-            ESP_LOGE(TAG, "Failed to initialize Core 1 Messaging Engine");
-            return false;
-        }
-
-        ESP_LOGI(TAG, "Core 1 Messaging Engine initialized successfully");
+        // Messaging already initialized above
+        ESP_LOGI(TAG, "Using BRUTAL messaging system - no abstractions");
 #else
         ESP_LOGE(TAG, "Serial transport requested but disabled in config");
         return false;
@@ -143,9 +133,7 @@ bool init(void) {
     // Task Manager initialization - Network-free mode for maximum performance
     INIT_STEP_CRITICAL("Starting Task Manager", Application::TaskManager::init());
 
-    // Start Core 1 Messaging Engine after TaskManager
-    INIT_STEP_CRITICAL("Starting Core 1 Messaging Engine",
-                       Messaging::Core1::InterruptMessagingEngine::start());
+    // Messaging already running - no need to start anything
 
     // Post-initialization debug test
     ESP_LOGI(TAG, "AppController initialization complete - testing debug UI log");
@@ -181,9 +169,6 @@ bool init(void) {
 void deinit(void) {
     ESP_LOGI(TAG, "Deinitializing Application Controller");
 
-    // Stop Core 1 Messaging Engine first
-    Messaging::Core1::InterruptMessagingEngine::stop();
-
     // Deinitialize task manager first (this stops all tasks)
     TaskManager::deinit();
 
@@ -196,8 +181,8 @@ void deinit(void) {
     // Deinitialize Logo Manager
     Logo::LogoManager::getInstance().deinit();
 
-    // Shutdown messaging system (handlers will clean up automatically)
-    Messaging::MessageAPI::shutdown();
+    // Shutdown messaging system
+    Messaging::shutdownMessaging();
 
     Display::deinit();
     Hardware::SD::deinit();

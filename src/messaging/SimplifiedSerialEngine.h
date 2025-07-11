@@ -188,8 +188,7 @@ private:
     }
 };
 
-// Static member
-SerialEngine* SerialEngine::instance = nullptr;
+
 
 // Global instance accessor for compatibility
 inline SerialEngine& getSerialEngine() {
