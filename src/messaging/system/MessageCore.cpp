@@ -165,7 +165,7 @@ void MessageCore::handleExternalMessage(const ExternalMessage &external) {
     }
 
     ESP_LOGW(TAG, "Processed external message %d -> %d internal messages",
-             LOG_EXTERNAL_MSG_TYPE(external.messageType),
+             LOG_EXTERNAL_MSG_TYPE(external.getMessageType()),
              internalMessages.size());
 }
 
@@ -181,42 +181,42 @@ bool MessageCore::publishExternal(const ExternalMessage &message) {
 
     bool success = true;
 
-    // // Prepare JSON payload
-    JsonDocument doc;
-    JsonObject obj = doc.to<JsonObject>();
+    // // // Prepare JSON payload
+    // JsonDocument doc;
+    // JsonObject obj = doc.to<JsonObject>();
 
-    // // Core fields
-    obj["messageType"] = SERIALIZE_EXTERNAL_MSG_TYPE(message.messageType);
-    obj["requestId"] = message.requestId;
-    obj["deviceId"] = message.deviceId;
-    obj["timestamp"] = message.timestamp;
+    // // // Core fields
+    // obj["messageType"] = SERIALIZE_EXTERNAL_MSG_TYPE(message.messageType);
+    // obj["requestId"] = message.requestId;
+    // obj["deviceId"] = message.deviceId;
+    // obj["timestamp"] = message.timestamp;
 
-    if (!message.originatingDeviceId.isEmpty()) {
-        obj["originatingDeviceId"] = message.originatingDeviceId;
-    }
+    // if (!message.originatingDeviceId.isEmpty()) {
+    //     obj["originatingDeviceId"] = message.originatingDeviceId;
+    // }
 
-    // Additional fields (excluding core ones)
-    static const char *excluded[] = {"messageType", "requestId", "deviceId",
-                                     "timestamp", "originatingDeviceId"};
+    // // Additional fields (excluding core ones)
+    // static const char *excluded[] = {"messageType", "requestId", "deviceId",
+    //                                  "timestamp", "originatingDeviceId"};
 
-    if (message.parsedData.is<JsonObjectConst>()) {
-        JsonObjectConst parsed = message.parsedData.as<JsonObjectConst>();
-        for (JsonPairConst kv : parsed) {
-            bool skip = false;
-            for (const char *ex : excluded) {
-                if (strcmp(kv.key().c_str(), ex) == 0) {
-                    skip = true;
-                    break;
-                }
-            }
-            if (!skip) {
-                obj[kv.key()] = kv.value();
-            }
-        }
-    }
+    // if (message.parsedData.is<JsonObjectConst>()) {
+    //     JsonObjectConst parsed = message.parsedData.as<JsonObjectConst>();
+    //     for (JsonPairConst kv : parsed) {
+    //         bool skip = false;
+    //         for (const char *ex : excluded) {
+    //             if (strcmp(kv.key().c_str(), ex) == 0) {
+    //                 skip = true;
+    //                 break;
+    //             }
+    //         }
+    //         if (!skip) {
+    //             obj[kv.key()] = kv.value();
+    //         }
+    //     }
+    // }
 
-    String jsonPayload;
-    serializeJson(doc, jsonPayload);
+    string jsonPayload = message.toJsonString();
+    // serializeJson(doc, jsonPayload);
     Messaging::MessageAPI::publishDebugUILog(jsonPayload);
     // Send to all transports
     for (auto &[name, transport] : transports) {
@@ -444,8 +444,8 @@ void MessageCore::routeInternalMessage(const InternalMessage &internal) {
 void MessageCore::logExternalMessage(const char *direction,
                                      const ExternalMessage &message) {
     ESP_LOGW(TAG, "[%s-EXT] %d (device: %s)", direction,
-             LOG_EXTERNAL_MSG_TYPE(message.messageType),
-             message.deviceId.c_str());
+             LOG_EXTERNAL_MSG_TYPE(message.getMessageType()),
+             message.getDeviceId());
     // //DO NOT Log message content as JSON if available,
     // if (message.parsedData != nullptr) {
     //   try {

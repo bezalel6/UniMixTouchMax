@@ -60,8 +60,6 @@ struct ParseResult {
     const string& getError() const { return error; }
 };
 
-
-
 // =============================================================================
 // AUDIO DATA STRUCTURES
 // =============================================================================
@@ -195,19 +193,10 @@ struct AssetResponseData {
     unsigned long timestamp = 0;
 
     AssetResponseData() = default;
-    
+
     // Create from typed message data
     AssetResponseData(const AssetResponseShape& shape)
-        : requestId(shape.requestId)
-        , deviceId(shape.deviceId)
-        , processName(shape.processName)
-        , success(shape.success)
-        , errorMessage(shape.errorMessage)
-        , assetDataBase64(shape.assetDataBase64)
-        , width(shape.width)
-        , height(shape.height)
-        , format(shape.format)
-        , timestamp(shape.timestamp) {}
+        : requestId(shape.requestId), deviceId(shape.deviceId), processName(shape.processName), success(shape.success), errorMessage(shape.errorMessage), assetDataBase64(shape.assetDataBase64), width(shape.width), height(shape.height), format(shape.format), timestamp(shape.timestamp) {}
 };
 
 // =============================================================================
@@ -448,7 +437,7 @@ class MessageFactory {
     static ExternalMessage createStatusRequest(const string& deviceId = STRING_EMPTY) {
         return ExternalMessage::createStatusRequest(deviceId);
     }
-    
+
     static ExternalMessage createAssetRequest(const string& processName, const string& deviceId = STRING_EMPTY) {
         return ExternalMessage::createAssetRequest(processName, deviceId);
     }
@@ -539,10 +528,10 @@ namespace MessageConverter {
  */
 inline std::vector<InternalMessage> externalToInternal(const ExternalMessage& external) {
     std::vector<InternalMessage> internalMessages;
-    
+
     // Route based on external message type
     switch (external.getMessageType()) {
-        case MessageProtocol::ExternalMessageType::STATUS_RESPONSE: {
+        case MessageProtocol::ExternalMessageType::STATUS_MESSAGE: {
             auto audioDataResult = external.getTypedData<AudioStatusResponseShape>();
             if (audioDataResult.isValid()) {
                 InternalMessage msg(MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE);
@@ -550,21 +539,21 @@ inline std::vector<InternalMessage> externalToInternal(const ExternalMessage& ex
             }
             break;
         }
-        
+
         case MessageProtocol::ExternalMessageType::ASSET_RESPONSE: {
             auto assetDataResult = external.getTypedData<AssetResponseShape>();
             if (assetDataResult.isValid()) {
-                InternalMessage msg(MessageProtocol::InternalMessageType::LOGO_UPDATE);
+                InternalMessage msg(MessageProtocol::InternalMessageType::ASSET_RESPONSE);
                 internalMessages.push_back(msg);
             }
             break;
         }
-        
+
         default:
             // Other message types not yet handled
             break;
     }
-    
+
     return internalMessages;
 }
 
@@ -577,7 +566,7 @@ inline ExternalMessage internalToExternal(const InternalMessage& internal) {
     switch (internal.messageType) {
         case MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE:
             return MessageFactory::createStatusRequest();
-            
+
         default:
             // Return empty message for unsupported conversions
             return ExternalMessage();
@@ -609,7 +598,7 @@ inline ParseResult<MessageProtocol::ExternalMessageType> parseExternalMessageTyp
     if (!parseResult.isValid()) {
         return ParseResult<MessageProtocol::ExternalMessageType>::createError(parseResult.getError());
     }
-    
+
     auto messageType = JsonToVariantConverter::extractMessageType(parseResult.getData());
     return ParseResult<MessageProtocol::ExternalMessageType>::createSuccess(messageType);
 }
@@ -628,11 +617,11 @@ inline bool shouldIgnoreMessage(const ExternalMessage& message, const string& my
     if (message.getMessageType() == MessageProtocol::ExternalMessageType::INVALID) {
         return true;
     }
-    
+
     if (!STRING_IS_EMPTY(myDeviceId) && message.isSelfOriginated()) {
         return true;
     }
-    
+
     return false;
 }
 
@@ -640,18 +629,18 @@ inline bool shouldIgnoreMessage(const ExternalMessage& message, const string& my
  * Type-safe audio status parsing
  */
 inline ParseResult<AudioStatusData> parseAudioStatusData(const ExternalMessage& message) {
-    if (message.getMessageType() != MessageProtocol::ExternalMessageType::STATUS_RESPONSE) {
-        return ParseResult<AudioStatusData>::createError(STRING_FROM_LITERAL("Not a STATUS_RESPONSE message"));
+    if (message.getMessageType() != MessageProtocol::ExternalMessageType::STATUS_MESSAGE) {
+        return ParseResult<AudioStatusData>::createError(STRING_FROM_LITERAL("Not a STATUS_MESSAGE message"));
     }
-    
+
     auto shapeResult = message.getTypedData<AudioStatusResponseShape>();
     if (!shapeResult.isValid()) {
         return ParseResult<AudioStatusData>::createError(shapeResult.getError());
     }
-    
+
     const auto& shape = shapeResult.getValue();
     AudioStatusData data;
-    
+
     data.hasDefaultDevice = shape.hasDefaultDevice;
     data.defaultDevice.friendlyName = shape.defaultDeviceName;
     data.defaultDevice.volume = shape.defaultDeviceVolume;
@@ -663,7 +652,7 @@ inline ParseResult<AudioStatusData> parseAudioStatusData(const ExternalMessage& 
     data.originatingDeviceId = shape.deviceId;
     data.originatingRequestId = shape.requestId;
     data.activeSessionCount = shape.activeSessionCount;
-    
+
     return ParseResult<AudioStatusData>::createSuccess(data);
 }
 
@@ -674,12 +663,12 @@ inline ParseResult<AssetResponseData> parseAssetResponseData(const ExternalMessa
     if (message.getMessageType() != MessageProtocol::ExternalMessageType::ASSET_RESPONSE) {
         return ParseResult<AssetResponseData>::createError(STRING_FROM_LITERAL("Not an ASSET_RESPONSE message"));
     }
-    
+
     auto shapeResult = message.getTypedData<AssetResponseShape>();
     if (!shapeResult.isValid()) {
         return ParseResult<AssetResponseData>::createError(shapeResult.getError());
     }
-    
+
     AssetResponseData data(shapeResult.getValue());
     return ParseResult<AssetResponseData>::createSuccess(data);
 }
@@ -695,7 +684,7 @@ namespace MessageSerializer {
 /**
  * Template helper to create JSON from any message shape
  */
-template<typename ShapeType>
+template <typename ShapeType>
 inline ParseResult<string> createJsonFromShape(const ShapeType& shape) {
     return ParseResult<string>::createSuccess(shape.toJsonString());
 }
@@ -709,7 +698,7 @@ inline ParseResult<string> serializeInternalMessage(const InternalMessage& messa
     jsonString += STRING_FROM_LITERAL("\",\"timestamp\":");
     jsonString += std::to_string(message.timestamp);
     jsonString += STRING_FROM_LITERAL("}");
-    
+
     return ParseResult<string>::createSuccess(jsonString);
 }
 
@@ -729,7 +718,7 @@ inline ParseResult<string> createStatusResponse(const AudioStatusData& data) {
     shape.defaultDeviceRole = data.defaultDevice.deviceRole;
     shape.activeSessionCount = data.activeSessionCount;
     shape.timestamp = data.timestamp;
-    
+
     // Use shape's direct JSON generation
     string jsonString = shape.toJsonString();
     return ParseResult<string>::createSuccess(jsonString);
@@ -744,7 +733,7 @@ inline ParseResult<string> createAssetRequest(const string& processName, const s
     shape.processName = processName;
     shape.requestId = STRING_FROM_LITERAL("req-") + string(std::to_string(millis()));
     shape.timestamp = millis();
-    
+
     // Use shape's direct JSON generation
     string jsonString = shape.toJsonString();
     return ParseResult<string>::createSuccess(jsonString);

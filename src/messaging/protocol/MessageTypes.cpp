@@ -2,8 +2,7 @@
 #include <esp_log.h>
 #include <unordered_map>
 #include <array>
-#include <string>
-
+#include "StringAbstraction.h"
 static const char* TAG = "MessageProtocol";
 
 namespace MessageProtocol {
@@ -14,7 +13,7 @@ namespace MessageProtocol {
 
 class ExternalMessageTypeRegistry::Impl {
    public:
-    std::unordered_map<std::string, ExternalMessageType> stringToEnumMap;
+    std::unordered_map<string, ExternalMessageType> stringToEnumMap;
     std::array<const char*, 6> enumToStringArray;
     bool initialized = false;
 
